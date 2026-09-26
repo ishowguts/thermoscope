@@ -1,48 +1,47 @@
 # Project state
 
-Checkpoint: 26 September 2026 IST. Stage: **P01 complete; P02 planned**.
+Checkpoint: 27 September 2026 IST (verification began 26 September UTC). Stage: **P01 complete; P02 implemented and locally verified, remote CI pending**.
 
-Canonical workspace: the fresh `thermoscope` folder. Remote: https://github.com/ishowguts/thermoscope, created private on 26 September 2026 IST. Branch: `main`. Use the fresh repository for future work; originals remain historical references.
+Canonical workspace: the fresh `thermoscope` folder. Remote: https://github.com/ishowguts/thermoscope, private. Branch: `main`. Original Part 1 and ThermalGuard projects remain historical references.
 
-## Verified
+## Verified implementation
 
-- PS, submitted six-slide deck, public Part 1 source and local ThermalGuard architecture/work contract inspected.
-- New build chooses the folder concept, with fresh implementation and a narrower evidence-led scope.
-- Architecture v2 and one P01-P08 milestone sequence prepared.
-- Eight-page readable briefing generated and visually reviewed.
-- Candidate versions checked against official registries/documentation. The P01 subset is installed, frozen and tested; optional map/raster/ML dependencies remain candidates.
-- GitHub connector identifies `ishowguts` and confirms push/admin access to the new private repository; old `sa-mael451/thermo-scope-part1` access is read-only.
-- User is team leader and reports having SIH login access. No portal submission performed.
-- User supplied Team ID **144613** and confirmed successful Earthdata login. Programmatic Earthdata/HLS authorization and download remain untested. Registered details confirmed: Git_Push_Pray, Bittu Mandal, INDIAN INSTITUTE OF INFORMATION TECHNOLOGY, PUNE.
-- FIRMS MAP_KEY saved in ignored local settings and validated on 26 September 2026 at 10:36 UTC: NASA returned HTTP 200 with the expected VIIRS CSV schema. The bounded one-day Jamnagar-area query returned zero rows. This confirms access, not completed ingestion or usable model data. Programmatic Earthdata download remains untested.
+- P01 API, source/time contracts, local PostGIS, migration setup, dependency locks and CI foundation.
+- P02 VIIRS NRT adapter, content-addressed raw CSVs, per-run immutable manifests, atomic deduplication, quarantine and sanitized provider failure handling.
+- Bounded GeoJSON API with spatial/time/mode filters, pagination and separate acquisition/ingestion status; one request uses repeatable-read isolation.
+- MapLibre map and observation list with point/row selection, units, NASA confidence, acquisition/receipt/availability, raw hash and source receipt. Replay and manual provider fetch remain explicit modes.
+- Real local data: 10 Jamnagar + 1 Singrauli + 2 Punjab observations. Reimport inserts no duplicates. A fresh NASA Jamnagar fetch returned the same ten observations and added live receipts. These are observations, not confirmed fires or reviewed labels.
+- `make check`: 41 unit/API tests, Python lint/format, frontend formatting, typecheck and production build passed. `make integration`: six real PostGIS scenarios passed before the final parser-only edge-case guard; CI will repeat the complete suite from a fresh checkout.
+- Browser checked WebGL map rendering, point/list selection, live/replay evidence, regional counts, native date editing/filtering, invalid and empty ranges, and list-only mode. Built frontend preview also rendered and selected the correct evidence with no warning/error console entries. Automatic GPU context-loss recovery was not forced.
 
-- P01 API, frontend status screen, provenance migration and source/time contracts implemented. 21 unit/API tests and one real PostGIS integration scenario pass; frontend typecheck/build and fresh frozen installs pass. Browser checked with database up, down and recovered.
-- Recent FIRMS inventory: 10 Jamnagar, 1 Singrauli, 2 Punjab observations; not application-ingested or classified. See `docs/COVERAGE_INVENTORY.md`.
+## Accounts and planning already completed
 
-## Current task
+Architecture, eight milestones, shared work contract and eight-page decision brief exist. The GitHub account is `ishowguts`. FIRMS access and real app fetch work; its credential is in ignored owner-only local settings. Earthdata web login works per the user; programmatic HLS/archive access remains untested.
 
-Completed task: internal record P01-FOUNDATION, implementation commit `217e4a7a26dc71a7467f538bf9740d0ab78c2b84`. GitHub Actions run 36239752092 passed on Ubuntu, including frozen install, unit/API checks, frontend build and real PostGIS integration. Next task: internal record P02-FIRMS-MAP, planned. Read `docs/EVIDENCE.md` for checks that were actually performed.
+Registered team: **Git_Push_Pray**, leader **Bittu Mandal**, Team ID **144613**, **INDIAN INSTITUTE OF INFORMATION TECHNOLOGY, PUNE**. The user has SIH team-leader login access. No SIH portal submission has been performed.
 
-This ledger cannot contain its own final commit hash without becoming stale. Resolve the checkpoint with `git log -1 -- PROJECT_STATE.md` and inspect `git status --short --branch`. Task handoffs record the base commit and subsequent evidence commits.
+## Task and handoff
 
-## Outstanding inputs
+Current task: internal record P02-FIRMS-MAP; base `6358bd94394cc81bfd45963dc7302841c3fd1fda`. Local implementation/checks are complete; commit/push and remote CI are the remaining P02 verification step. Read `docs/EVIDENCE.md` for actual receipts and checks. Resolve the eventual checkpoint commit with `git log -1 -- PROJECT_STATE.md`, then inspect `git status --short --branch`.
+
+Next engineering task: internal record P03-CONTEXT (planned). Read the P03 contract before collecting bounded OSM/land-cover context or defining events/sites. No classifier is built; history/rules are P04, trained structured model and evaluation P05. No MODIS/standard-product reconciliation, scheduler, raster features, cloud deployment or authentication is claimed by P02.
+
+## Inputs still needed later
 
 | Input | Needed for | Current state |
 |---|---|---|
-| FIRMS MAP_KEY | Live ingestion acceptance | Local credential/access check passed; application ingestion still pending |
-| Earthdata login and selected archive authorization | Historical/HLS access | Login works per user; programmatic download untested |
-| Team ID, registered name, current portal limits | Submission-ready deck | Registered identity confirmed; nomination and portal limits still to confirm |
-| Pilot geography/date coverage | Data collection | Three small five-day windows checked; 13 real observations saved; no reviewed labels |
-| Independent label reviewer(s) | Credible test set | Not arranged |
+| Earthdata archive authorization | Historical/HLS retrieval | Web login confirmed; programmatic check pending |
+| Portal limits and nomination confirmation | Final submission package | Team identity confirmed; portal fields not audited |
+| Independent reviewers and incident evidence | Credible labels/evaluation | Not arranged; no gold labels |
 | Cloud provider, billing owner and bounded spend | Paid deployment/experiments | No resources provisioned |
-| Code license and public-release scope | Public release | Undecided |
+| Code license and release allowlist | Public release | Undecided; repo private |
 
-## Restart instruction
+The corrected six-slide presentation/PDF and current portal requirements remain the immediate submission priority. The original PPT is unchanged; no submission or video has been produced by P02. Recheck dated SIH count/deadline information before submission.
 
-Inspect Git, run `make doctor`, and read internal record P02-FIRMS-MAP. P01 is the foundation; ingestion, map and classifier do not exist. P02 starts with the saved real Jamnagar CSV and a bounded NASA request. Preserve source hashes and distinguish historical replay from live ingestion. The parallel submission priority remains the six-slide PDF and verified portal requirements; the old PPT has not yet been edited or submitted.
+## Local resources
 
-## Local resources at checkpoint
+API at `127.0.0.1:8000`, Vite development at `127.0.0.1:5173`, local PostGIS at `127.0.0.1:55432`; named volume `thermoscope_pgdata` retained. A temporary built-preview server uses `127.0.0.1:5174` during verification and will be stopped before handoff. All these are local processes, not public deployments. Inspect listeners before restarting duplicates. Stop task-owned servers normally and use `make db-stop` to retain database data.
 
-Development API is running on `127.0.0.1:8000`; Vite is running on `127.0.0.1:5173`; Docker container `thermoscope-db-1` is healthy on loopback port 55432. No cloud services provisioned. Stop the owned development processes with Ctrl+C and use `make db-stop` to stop the database while retaining its volume. On session restart, verify listeners before starting duplicates.
+## Restart checks
 
-The code commit passed CI. The subsequent checkpoint commit only updates evidence/state/task documentation and uses `[skip ci]` to avoid repeating an unchanged suite.
+Inspect Git, run `make doctor`, and open the local observation view. Retain `.env`, raw objects, manifests and development data. Do not rerun the provider unnecessarily to make the timestamps look newer. Every real receipt already has an immutable manifest. Unknown historical publication/availability remains unknown. Interrupted RUNNING attempts need manual investigation until scheduled job recovery is implemented.

@@ -4,7 +4,7 @@ Evidence-based analysis of industrial thermal sources for SIH 2026 problem state
 
 ThermoScope is designed to combine NASA FIRMS observations, industrial infrastructure, land cover and site history in a GIS workbench. The intended workflow separates likely source, unusual behaviour and analyst review priority, with evidence and uncertainty visible for each assessment.
 
-**Status:** P01 foundation implemented: runnable API, PostGIS provenance migration, typed source/time contracts, locked dependencies and a development status screen. Real FIRMS samples are saved for the next milestone. Application ingestion, map, classifier, model evaluation and deployment are not implemented yet; the earlier college demonstration is a separate project.
+**Status:** P02 implements genuine FIRMS ingestion, immutable source receipts, PostGIS storage, a bounded observations API and an interactive map/list with source evidence. The local pilot contains 13 real NOAA-20 observations across three regions. Duplicate imports, malformed rows and provider failures are checked. Observations remain unclassified; model training, evaluation and cloud deployment are later milestones. The earlier college demonstration is a separate project.
 
 ## Read first
 
@@ -20,7 +20,7 @@ ThermoScope is designed to combine NASA FIRMS observations, industrial infrastru
 | [Audit](docs/AUDIT.md) | What the earlier code and presentation actually contain |
 | [Research](docs/RESEARCH.md) | Primary sources and technology decisions |
 
-For implementation sessions, read the contributor guide, the work contract and [current state](PROJECT_STATE.md). Verified P01 versions and remaining candidates are recorded in [ENVIRONMENT.md](ENVIRONMENT.md). See [evidence](docs/EVIDENCE.md) for the checks actually performed.
+For implementation sessions, read the contributor guide, the work contract and [current state](PROJECT_STATE.md). Verified P01/P02 versions and remaining candidates are recorded in [ENVIRONMENT.md](ENVIRONMENT.md). See [evidence](docs/EVIDENCE.md) for the checks actually performed.
 
 ## What success means
 

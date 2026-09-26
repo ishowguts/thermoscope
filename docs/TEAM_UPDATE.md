@@ -1,6 +1,6 @@
 # ThermoScope: team explanation
 
-26 September 2026. Share this page with Git_Push_Pray alongside the decision brief.
+27 September 2026 IST. Share this page with Git_Push_Pray alongside the decision brief.
 
 ## What changed
 
@@ -10,11 +10,11 @@ The new system will answer three separate questions: what probably produced the 
 
 ## What is real now
 
-P01 provides the API, spatial database migration, dependency locks, source/time schemas and a browser-checked foundation screen. NASA access works and 13 real observations were saved across three small candidate regions. Those samples have not yet passed through application ingestion. There is no observation map, rule classifier, trained model or measured accuracy yet.
+P01/P02 now provide a working path from NASA FIRMS to immutable raw receipts, PostGIS, a query API and an interactive map/list. We ingested 10 Jamnagar, 1 Singrauli and 2 Punjab observations. Reimporting does not duplicate them; a fresh NASA fetch also passed. Selecting a point or row reveals its real measurements, times and source hash. These are 13 observations, not 13 confirmed fires. No rule classifier, trained model or measured accuracy exists yet.
 
 ## Before submission versus after submission
 
-The submission track is the corrected six-slide PDF, concise explanation, verified registration/portal requirements and only demonstrations that actually work. The immediate build target is P02: genuine observations passing through storage/API to a map. Add P03/P04 context, history and transparent rules only as they pass their checks. A complete validated research system is not a prerequisite for submitting an accurate idea proposal.
+The submission track is the corrected six-slide PDF, concise explanation, verified registration/portal requirements and only demonstrations that actually work. P02 now supplies the genuine-observation map demonstration. Add P03/P04 context, history and transparent rules only as they pass their checks. A complete validated research system is not a prerequisite for submitting an accurate idea proposal.
 
 Do not delay the submission while trying to finish every milestone. The documented deadline and PS cap are in the submission guide and must be rechecked at the time of submission. The latest count recorded there is a dated snapshot, not a reserved slot.
 
@@ -28,6 +28,6 @@ One lead integrator owns implementation and verification; an independent reviewe
 
 ## Team responsibilities
 
-The leader has already provided the FIRMS access key, confirmed Earthdata login and supplied registered details. The team still needs to confirm portal requirements and nomination, arrange independent case review, review the final claims/slides and complete the approved submission. Before any paid deployment, we will choose a provider and propose an explicit cost cap and shutdown plan. There is no cloud bill from P01.
+The leader has already provided the FIRMS access key, confirmed Earthdata login and supplied registered details. The team still needs to confirm portal requirements and nomination, arrange independent case review, review the final claims/slides and complete the approved submission. Before any paid deployment, we will choose a provider and propose an explicit cost cap and shutdown plan. P01/P02 use the local machine and free NASA access; no cloud resources have been provisioned.
 
 A short team-narrated demo video is useful supporting material if the portal permits a link. It must show the release that actually exists and label historical replay. It cannot guarantee selection or substitute for a clear PDF and defensible idea.

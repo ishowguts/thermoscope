@@ -20,3 +20,7 @@ No bulk dataset or trained model has been acquired for the fresh build yet. Reco
 Dataset manifests must distinguish observed data, synthetic fixtures, weak labels and independent reviewed labels. Small fixtures must not copy credentials or imply that invented coordinates identify real incidents. Public case packs require a reviewed file allowlist and source-rights check.
 
 Application code licensing remains a team decision. It does not replace any source/model obligations.
+
+## P02 online basemap use
+
+MapLibre uses `https://tile.openstreetmap.org/{z}/{x}/{y}.png` with visible OpenStreetMap contributor attribution. Normal browser caching and referrer behavior are retained; no tile prefetch, offline export or proxy that hides the client is introduced. Small interactive local testing was performed. `VITE_TILE_URL` and `VITE_TILE_ATTRIBUTION` can select a permitted alternative at build time. A public deployment needs a provider/capacity decision; the OSM service has no promised SLA. The observation list works without map rendering, but the current raster basemap still needs network access.

@@ -22,7 +22,7 @@ This ledger records completed verification, not planned checks. Large audit down
 
 ## Not yet performed
 
-Programmatic Earthdata download, application FIRMS ingestion, model training/evaluation, deployed browser tests, offline application replay, cloud restore and SIH submission remain unperformed. P01 local installation, tests, migration and browser evidence are recorded below.
+Programmatic Earthdata download, model training/evaluation, cloud deployment, offline basemap replay, cloud restore and SIH submission remain unperformed. Completed P01/P02 local ingestion, storage, API and browser evidence is recorded below.
 
 ## FIRMS access check — 26 September 2026
 
@@ -66,3 +66,27 @@ GitHub Actions is configured to use the same frozen install and check commands o
 - 46 changed files were scanned before implementation push: zero exact matches for the local FIRMS key/database secret/connection string. Ignore checks for `.env`, real NASA samples, Python environment and npm dependencies passed; `.env` is mode 0600.
 - Fifteen relative Markdown links resolved. All three saved NASA sample SHA-256 values matched their coverage manifests.
 - P01 marked complete. Final checkpoint changes are documentation only and skip repeat CI; no code changed after the successful run. Local preview/database remain running as listed in `PROJECT_STATE.md`.
+
+## P02 local implementation and verification — 27 September 2026 IST
+
+Base commit `6358bd94394cc81bfd45963dc7302841c3fd1fda`; code was uncommitted during local checks. All tests used the frozen environment above plus MapLibre 6.11.2 and Prettier 3.9.9. The implementation commit is the commit containing this record; remote verification is recorded separately after push.
+
+| Check | Observed result | Scope / limitation |
+|---|---|---|
+| `make migrate` | `0002_observations` applied; real DB ready | Retained development volume; no destructive rollback |
+| `make check` | 41 unit/API cases, Python lint/format, frontend Prettier, TypeScript and Vite build passed | Includes 20 provider/parser cases; fixtures are explicit |
+| `make integration` | Six real PostGIS scenarios passed | Duplicate/concurrent reversed import, quarantine, mode separation, revision conflict, provider failure with retained data, hash rejection, bounds/pagination and migration round trip |
+| Real Jamnagar import | Run `0f8d43cb-7b62-4be7-8dd7-dd30ea333bb3`: 10 accepted, 10 inserted, zero rejected | Real historical replay; acquisition 22–25 September |
+| Repeat Jamnagar import | Run `8f94db03-1e7c-4aa3-b07c-6f4bad4f3a7c`: 10 accepted, zero inserted, 10 duplicates | Same source snapshot and unchanged observation count |
+| Singrauli / Punjab imports | Runs `4216da8c-eead-466d-9f65-ceef334df818` / `6ba22e85-f0df-446b-a01a-a3f239849865`: 1 / 2 inserted | Overall 13 real physical observations; no reviewed labels |
+| Fresh NASA provider fetch | Run `cca32298-fc86-4367-85f1-f4c410e2f5fa`, received 26 September **21:53:28.757683 UTC**: 10 accepted, zero inserted, 10 duplicates | Same Jamnagar bytes/hash, distinct LIVE receipts; last acquisition 25 September 21:31 UTC, not fetch time |
+| Running HTTP API smoke | Jamnagar returned ten unique IDs in each replay/live view, correct modes, source hashes and last run metadata | Local `local/p02-api-smoke.json`; no cloud API |
+| Development browser | Real tiles/points; point and row selection; source measurements/hash/time; live/replay differences; regional counts 10/1/2; Punjab 24 September filter gives 1; reversed dates give error; 25 September gives zero; hidden-map list remains selectable | Native date keyboard interaction used after automation fill did not change controlled input state |
+| Built browser at port 5174 | Production bundle's ESM worker rendered the map; clicking a Jamnagar point selected the matching 1.61 MW observation/evidence; no warning/error console entries | Local Vite preview, not cloud deployment; mobile and forced GPU loss not tested |
+| Dependency metadata | MapLibre/Prettier stable releases and licenses inspected; npm audit reports zero known vulnerabilities | Backend dependencies unchanged; fresh complete CI install follows push |
+
+Original real CSV hashes are in `COVERAGE_INVENTORY.md`. Application raw objects live under ignored `local/objects/raw/<sha>.csv`; receipt manifests under `local/objects/manifests/<run-id>.json`. Local import summaries: `local/p02-real-import-check.json`. No provider key, key-bearing URL or real raw data is committed.
+
+Corrections from verification: sorted observation insertion order prevents opposite-order overlap deadlocks; earliest observed availability remains stable over repeated live receipts; impossible maximum-date queries return 422; a malformed optional CSV column is quarantined; the MapLibre renderer's string-ID conversion is avoided with an explicit property for picking/highlighting. Historical file imports do not acquire invented publication dates.
+
+Limitations: P02 is manually invoked, VIIRS NRT only. The UI currently selects NOAA-20; other parser products are not real-data-certified here. Source-revision conflicts are preserved for review, not automatically reconciled. Interrupted attempts can remain RUNNING. List-only operation was tested; automatic WebGL-loss handling exists but was not forced. Vite's lazy map chunk remains over its 500 kB warning threshold. The online OSM basemap is not an offline tile pack. No accuracy, incident labels, classifier or operational alert readiness is claimed.

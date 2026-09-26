@@ -1,6 +1,6 @@
 # Initial source and label inventory
 
-Checked 26 September 2026, 11:36 UTC. These are candidate sampling windows, not a representative evaluation dataset. NASA access checks are separate from application ingestion.
+Checked 26 September 2026, 11:36 UTC. These are candidate sampling windows, not a representative evaluation dataset. The original access check is separate from the completed P02 application ingestion recorded below.
 
 ## Recent thermal observations
 
@@ -35,4 +35,4 @@ These are observations, not 13 fires, independent events or labelled examples. N
 
 Facility identity alone does not label a hotspot or confirm an industrial accident. OSM/rule outputs may propose weak training labels but cannot independently validate a model using those same features. No gold labels exist in this inventory.
 
-P02 should use the saved Jamnagar CSV as a genuine historical-replay integration case, preserve all source units/times, quarantine invalid rows and verify repeat ingestion. Region/date expansion must follow coverage rather than a desired class balance invented in code. Historical data and independent labels remain prerequisites for P04/P05.
+P02 ingested all three hashed samples into the application. Jamnagar reimport inserted zero new observations; the 26 September 21:53 UTC provider fetch returned the same ten observations and created distinct live receipts. The database contains 13 unique real observations, not a training/evaluation dataset. Original collection units and unknown historical availability remain visible. Region/date expansion must follow coverage rather than a desired class balance invented in code. Historical data and independent labels remain prerequisites for P04/P05.

@@ -1,6 +1,6 @@
 # Environment and version baseline
 
-Candidate research dated 25 September 2026; P01 verification dated 26 September. **The installed P01 subset below is tested and frozen. Remaining map, raster and ML entries are candidates, not an installed/tested combination.** Do not silently substitute prereleases or `latest` tags.
+Candidate research dated 25 September 2026; P01/P02 verification dated 26–27 September. **The installed API/UI/map subset below is tested and frozen. Remaining raster, ML and optional packages are candidates, not an installed/tested combination.** Do not silently substitute prereleases or `latest` tags.
 
 ## Runtime choices
 
@@ -70,3 +70,11 @@ The acceptance record must distinguish version lookup, successful installation, 
 - npm audit reported zero known vulnerabilities. PyPI version metadata was checked for known advisories; this is a dependency metadata check, not a full security audit. Package metadata is saved locally. Final validation details are in `docs/EVIDENCE.md`.
 
 GitHub Actions revisions are pinned to official v6 commit SHAs verified through the GitHub API. Cloud containerization, production permissions, backup/restore and the optional ML environment remain future gates.
+
+## P02 additions — 27 September 2026 IST
+
+- MapLibre GL JS **6.11.2** (BSD-3-Clause) and Prettier **3.9.9** (MIT) are exact frontend dependencies with a committed npm lock. Registry metadata and [MapLibre documentation](https://maplibre.org/maplibre-gl-js/docs/) checked; the Vite build bundles the v6 ESM worker using `?worker&url`.
+- The provider uses Python's standard-library HTTPS client; no extra runtime HTTP library is needed for this bounded adapter. The proposed production httpx dependency remains uninstalled.
+- npm audit reported zero known vulnerabilities after these additions. This is a point-in-time advisory check, not a full security certification.
+- The map is a separate lazy-loaded chunk. Vite still warns that it exceeds 500 kB (about 1.03 MB minified / 278 kB gzip, plus a 510 kB worker). Do not claim a mobile performance budget has passed.
+- Local WebGL rendering and point/list selection are checked separately from the compiler. Raster processing and the optional ML environment remain unverified.

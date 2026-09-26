@@ -18,6 +18,7 @@ check:
 	$(UV) run --frozen ruff check backend scripts
 	$(UV) run --frozen ruff format --check backend scripts
 	$(UV) run --frozen pytest -m 'not integration'
+	$(RUN) npm --prefix frontend run format:check
 	$(RUN) npm --prefix frontend run build
 integration:
 	THERMOSCOPE_RUN_DB_TESTS=1 $(UV) run --frozen pytest -m integration
@@ -32,3 +33,7 @@ dev-api:
 	$(UV) run --frozen uvicorn thermoscope.main:app --app-dir backend --host 127.0.0.1 --port 8000
 dev-web:
 	$(RUN) npm --prefix frontend run dev -- --host 127.0.0.1
+
+.PHONY: ingest
+ingest:
+	PYTHONPATH=backend $(UV) run --frozen python -m thermoscope.ingest $(ARGS)

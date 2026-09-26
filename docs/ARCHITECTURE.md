@@ -2,7 +2,7 @@
 
 Version 2.0 | 25 September 2026 | PS SIH26162, NTRO, Software, Disaster Management
 
-Status: P01 foundation exists; this remains the specification for later milestones. There is no application ingestion, map, trained model, measured accuracy or deployed service yet. This specification supersedes the old ThermalGuard plan for the new build only. Read `00-BRIEFING.md` first. Source references are in `RESEARCH.md`; release candidates and validation requirements are in `../ENVIRONMENT.md`.
+Status: P01 foundation and P02 genuine observation ingestion/storage/API/map exist. This remains the specification for later milestones. There is no trained model, measured accuracy or deployed service yet. This specification supersedes the old ThermalGuard plan for the new build only. Read `00-BRIEFING.md` first. Source references are in `RESEARCH.md`; release candidates and validation requirements are in `../ENVIRONMENT.md`.
 
 ## 1. Product decision and scope
 

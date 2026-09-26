@@ -5,7 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from thermoscope.config import Settings
 
-SCHEMA_REVISION = "0001_source_snapshots"
+SCHEMA_REVISION = "0002_observations"
 
 
 @contextmanager

@@ -14,7 +14,7 @@ The submission track starts immediately: revise the six-slide story and abstract
 
 ## P02 — Genuine FIRMS ingestion through to the map
 
-**Build:** narrow region/product request, immutable raw object and manifest, VIIRS/MODIS normalization, per-row quarantine, atomic deduplication, ingestion status, bounded observations API and basic map/list. Before events exist, use an explicitly named observations endpoint; do not mislabel raw points as resolved incidents. Implement a saved historical sample for repeatable tests.
+**Build:** narrow region/product request, immutable raw object and manifest, VIIRS NRT normalization (P02 scope; a separate MODIS adapter remains deferred), per-row quarantine, atomic deduplication, ingestion status, bounded observations API and basic map/list. Before events exist, use an explicitly named observations endpoint; do not mislabel raw points as resolved incidents. Implement a saved historical sample for repeatable tests.
 
 **Gate:** ingest a real sample twice without duplication; preserve time/FRP/temperature/confidence semantics; handle an invalid row and a provider failure; show last acquisition versus update time. A real-data map and historical replay badge can now be demonstrated. No fixed AI classification response.
 

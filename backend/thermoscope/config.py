@@ -1,4 +1,5 @@
 from enum import StrEnum
+from pathlib import Path
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,6 +15,8 @@ class DataMode(StrEnum):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
     database_url: SecretStr | None = None
+    firms_map_key: SecretStr | None = None
+    object_store_local_path: Path = Path("local/objects")
     app_data_mode: DataMode = DataMode.SYNTHETIC_FIXTURE
     allowed_origins: list[str] = ["http://127.0.0.1:5173", "http://localhost:5173"]
 
