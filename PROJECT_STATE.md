@@ -1,12 +1,14 @@
 # Project state
 
-Checkpoint: 27 September 2026, 03:55 IST, written after taking over. Stage: **P01 complete; P02 complete (local checks + clean-checkout CI passed); P03 implemented on branch `p03-context` and in review (CI green, not merged)**. Deadline: SIH idea submission 30 September 2026.
+Checkpoint: 27 September 2026, 03:55 IST, written after taking over. Stage: **P01 complete; P02 complete (local checks + clean-checkout CI passed); P03 on branch `p03-context` and P04 on branch `p04-history` implemented and in review (CI green, not merged)**. Deadline: SIH idea submission 30 September 2026.
 
 **Every session reads the internal handoff log first**: it says which tool last wrote, where it took over, where it stopped and the exact next action.
 
 **Current split (owner's decision, 27 September 04:00 IST): the implementer built P03 on branch `p03-context` (in review since 04:55 IST); the integrator owns the six-slide deck (internal record SUBMISSION-DECK). The implementer has not started the PPT.**
 
 P03 on the branch adds dated OSM facility context with an approximate pixel area, ESA WorldCover 2021 land cover, and deterministic events/recurring sites (ADR-014–016). Branch checks: 77 unit/API and 10 PostGIS tests, four green CI runs, headless-browser flow. Open before "done": a person-reviewed adjacent industrial/cropland case (candidate: Jamnagar power-plant group) and a run on the owner's Mac (rasterio wheel needs macOS 14+). `main` still contains only P01/P02 code; the Mac database is at migration 0002.
+
+P04 on `p04-history` (stacked on P03) adds as-of history using 232 real NOAA-20 observations from 1 July–21 September and transparent rules for likely source, behaviour and review priority with reasons, a retrospective/operational availability switch and a 180-day timeline (ADR-017). Branch checks: 104 unit/API and 11 PostGIS tests, green CI. Thresholds are uncalibrated defaults; no trained model or probability exists.
 
 Canonical workspace: the fresh `thermoscope` folder. Remote: https://github.com/ishowguts/thermoscope, private. Branch: `main`. Original Part 1 and ThermalGuard projects remain historical references.
 
