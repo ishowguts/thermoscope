@@ -5,7 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from thermoscope.config import Settings
 
-SCHEMA_REVISION = "0003_facility_context"
+SCHEMA_REVISION = "0004_events_sites"
 
 
 @contextmanager

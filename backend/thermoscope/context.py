@@ -13,6 +13,7 @@ from sqlalchemy import text
 
 from thermoscope.config import DataMode, Settings
 from thermoscope.database import database_engine
+from thermoscope.events import observation_event
 from thermoscope.osm import PROVIDER
 from thermoscope.regions import Bounds
 
@@ -158,6 +159,7 @@ def observation_context(settings: Settings, observation_id: str, mode: DataMode)
             truncated = len(rows) > MAX_CANDIDATES
         else:
             truncated = False
+        event = observation_event(conn, observation_id, mode)
     in_support = [c for c in candidates if c["relation"] == "INSIDE_SUPPORT"]
     snapshot_block = None
     timing = None
@@ -199,6 +201,12 @@ def observation_context(settings: Settings, observation_id: str, mode: DataMode)
             "candidates_truncated": truncated,
             "note": MISSINGNESS_NOTE,
         },
+        "event": event,
+        "event_note": (
+            "Not grouped yet: run the event builder for this region and mode."
+            if event is None
+            else "Grouped by time and distance only; an event is not a confirmed fire."
+        ),
         "generated_at": datetime.now(UTC),
     }
 
