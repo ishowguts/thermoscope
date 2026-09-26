@@ -1,10 +1,12 @@
 # Project state
 
-Checkpoint: 27 September 2026, 03:55 IST, written after taking over. Stage: **P01 complete; P02 complete (local checks + clean-checkout CI passed); P03 not started**. Deadline: SIH idea submission 30 September 2026.
+Checkpoint: 27 September 2026, 03:55 IST, written after taking over. Stage: **P01 complete; P02 complete (local checks + clean-checkout CI passed); P03 implemented on branch `p03-context` and in review (CI green, not merged)**. Deadline: SIH idea submission 30 September 2026.
 
 **Every session reads the internal handoff log first**: it says which tool last wrote, where it took over, where it stopped and the exact next action.
 
-**Current split (owner's decision, 27 September 04:00 IST): the implementer is building P03 on branch `p03-context`; the integrator owns the six-slide deck (internal record SUBMISSION-DECK). The implementer has not started the PPT.**
+**Current split (owner's decision, 27 September 04:00 IST): the implementer built P03 on branch `p03-context` (in review since 04:55 IST); the integrator owns the six-slide deck (internal record SUBMISSION-DECK). The implementer has not started the PPT.**
+
+P03 on the branch adds dated OSM facility context with an approximate pixel area, ESA WorldCover 2021 land cover, and deterministic events/recurring sites (ADR-014–016). Branch checks: 77 unit/API and 10 PostGIS tests, four green CI runs, headless-browser flow. Open before "done": a person-reviewed adjacent industrial/cropland case (candidate: Jamnagar power-plant group) and a run on the owner's Mac (rasterio wheel needs macOS 14+). `main` still contains only P01/P02 code; the Mac database is at migration 0002.
 
 Canonical workspace: the fresh `thermoscope` folder. Remote: https://github.com/ishowguts/thermoscope, private. Branch: `main`. Original Part 1 and ThermalGuard projects remain historical references.
 
@@ -30,7 +32,7 @@ Last completed task: internal record P02-FIRMS-MAP — **done**. Implementation 
 
 Priority order until 30 September: (1) submission deck and portal package, (2) P03 (in parallel on its own branch). The deck is not in this repository; the original PPT and official template live outside this folder.
 
-Engineering task in progress: internal record P03-CONTEXT, owner the implementer, branch `p03-context`. Read the P03 contract before collecting bounded OSM/land-cover context or defining events/sites. No classifier is built; history/rules are P04, trained structured model and evaluation P05. No MODIS/standard-product reconciliation, scheduler, raster features, cloud deployment or authentication is claimed by P02.
+Engineering task in review: internal record P03-CONTEXT on branch `p03-context`, owner the implementer. Merging into `main` is the owner's decision; after a merge, run `make install`, `make migrate` and the `make context` commands in `docs/DEVELOPMENT.md` on the Mac. Read the P03 contract before collecting bounded OSM/land-cover context or defining events/sites. No classifier is built; history/rules are P04, trained structured model and evaluation P05. No MODIS/standard-product reconciliation, scheduler, raster features, cloud deployment or authentication is claimed by P02.
 
 ## Inputs still needed later
 
