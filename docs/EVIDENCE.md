@@ -90,3 +90,19 @@ Original real CSV hashes are in `COVERAGE_INVENTORY.md`. Application raw objects
 Corrections from verification: sorted observation insertion order prevents opposite-order overlap deadlocks; earliest observed availability remains stable over repeated live receipts; impossible maximum-date queries return 422; a malformed optional CSV column is quarantined; the MapLibre renderer's string-ID conversion is avoided with an explicit property for picking/highlighting. Historical file imports do not acquire invented publication dates.
 
 Limitations: P02 is manually invoked, VIIRS NRT only. The UI currently selects NOAA-20; other parser products are not real-data-certified here. Source-revision conflicts are preserved for review, not automatically reconciled. Interrupted attempts can remain RUNNING. List-only operation was tested; automatic WebGL-loss handling exists but was not forced. Vite's lazy map chunk remains over its 500 kB warning threshold. The online OSM basemap is not an offline tile pack. No accuracy, incident labels, classifier or operational alert readiness is claimed.
+
+## P02 remote verification and checkpoint — 27 September 2026 IST
+
+Session: the implementer, taking over after the integrator reached its usage limit. Takeover and exit points are in the internal handoff log.
+
+| Check | Observed result | Scope / limitation |
+|---|---|---|
+| Local Git state before push (lock-free `git --no-optional-locks status`) | `main` clean, one commit ahead of `origin/main`; `origin/main` (`6358bd9`) is an ancestor of `43cf2b0` | Read on the owner's Mac checkout through the desktop bridge |
+| Pre-push secret scan | Exact local FIRMS key (32 chars) and database password: zero matches in the tracked tree at `43cf2b0` or in the `6358bd9..43cf2b0` diff; generic key/secret/token pattern scan of the diff: zero findings; only `.env.example` tracked among env files; nothing under `local/` tracked | Values compared in-shell, never printed |
+| Push path | Local bridge shell had no GitHub credentials. `git bundle create local/p02-handoff.bundle origin/main..main` (SHA-256 `8022814b96ef5f26c1a780fa2755d902695ab605bb250a88a0694e3b2fda7728`), verified, fetched into a cloud clone with the same hash, pushed `43cf2b0` unchanged | Same commit SHA, author and tree as the local commit; bundle deleted after sync |
+| `git push origin 43cf2b0:refs/heads/main` | `6358bd9..43cf2b0` fast-forward; `git ls-remote` returned `43cf2b0453a559a4841a05de73413211d9200e3e` for `refs/heads/main` | No force push, no history rewrite |
+| [GitHub Actions run 36275992464](https://github.com/ishowguts/thermoscope/actions/runs/36275992464), job 108498732565 | **completed / success**, 22:21:14–22:21:56 UTC on Ubuntu 24.04 with the digest-pinned PostGIS service. All steps ran, none skipped: `make install`; `make check` (Ruff "All checks passed", Ruff format, **41 passed, 6 deselected**, Prettier, `tsc --noEmit`, Vite build); `make integration` (**6 passed, 41 deselected**) | Job log SHA-256 `0ca5ef70397f019a60dd28cdfb0309da7e57b3b0d5d10e40633fe10c9a2b620c`, kept outside Git. Vite still warns that the map chunk exceeds 500 kB |
+
+P02 marked done. The checkpoint commit that contains this record changes documentation only and uses `[skip ci]`; no code changed after the successful run.
+
+Incident during takeover: an ordinary `git status` from the bridge shell at about 03:43 IST created `.git/index.lock` and could not remove it (deletion was not yet permitted). It was an empty file created by that command, and it was deleted at about 03:45 IST once permission was granted. Any Git error from another tool in that window came from this, not from repository corruption. Bridged sessions now use lock-free reads.

@@ -1,6 +1,8 @@
 # Project state
 
-Checkpoint: 27 September 2026 IST (verification began 26 September UTC). Stage: **P01 complete; P02 implemented and locally verified, remote CI pending**.
+Checkpoint: 27 September 2026, 03:55 IST, written after taking over. Stage: **P01 complete; P02 complete (local checks + clean-checkout CI passed); P03 not started**. Deadline: SIH idea submission 30 September 2026.
+
+**Every session reads the internal handoff log first**: it says which tool last wrote, where it took over, where it stopped and the exact next action.
 
 Canonical workspace: the fresh `thermoscope` folder. Remote: https://github.com/ishowguts/thermoscope, private. Branch: `main`. Original Part 1 and ThermalGuard projects remain historical references.
 
@@ -11,7 +13,7 @@ Canonical workspace: the fresh `thermoscope` folder. Remote: https://github.com/
 - Bounded GeoJSON API with spatial/time/mode filters, pagination and separate acquisition/ingestion status; one request uses repeatable-read isolation.
 - MapLibre map and observation list with point/row selection, units, NASA confidence, acquisition/receipt/availability, raw hash and source receipt. Replay and manual provider fetch remain explicit modes.
 - Real local data: 10 Jamnagar + 1 Singrauli + 2 Punjab observations. Reimport inserts no duplicates. A fresh NASA Jamnagar fetch returned the same ten observations and added live receipts. These are observations, not confirmed fires or reviewed labels.
-- `make check`: 41 unit/API tests, Python lint/format, frontend formatting, typecheck and production build passed. `make integration`: six real PostGIS scenarios passed before the final parser-only edge-case guard; CI will repeat the complete suite from a fresh checkout.
+- `make check`: 41 unit/API tests, Python lint/format, frontend formatting, typecheck and production build passed. `make integration`: six real PostGIS scenarios passed. The same full suite passed from a fresh checkout in [GitHub Actions run 36275992464](https://github.com/ishowguts/thermoscope/actions/runs/36275992464) on commit `43cf2b0`.
 - Browser checked WebGL map rendering, point/list selection, live/replay evidence, regional counts, native date editing/filtering, invalid and empty ranges, and list-only mode. Built frontend preview also rendered and selected the correct evidence with no warning/error console entries. Automatic GPU context-loss recovery was not forced.
 
 ## Accounts and planning already completed
@@ -22,9 +24,11 @@ Registered team: **Git_Push_Pray**, leader **Bittu Mandal**, Team ID **144613**,
 
 ## Task and handoff
 
-Current task: internal record P02-FIRMS-MAP; base `6358bd94394cc81bfd45963dc7302841c3fd1fda`. Local implementation/checks are complete; commit/push and remote CI are the remaining P02 verification step. Read `docs/EVIDENCE.md` for actual receipts and checks. Resolve the eventual checkpoint commit with `git log -1 -- PROJECT_STATE.md`, then inspect `git status --short --branch`.
+Last completed task: internal record P02-FIRMS-MAP — **done**. Implementation commit `43cf2b0453a559a4841a05de73413211d9200e3e`, pushed; CI success. Read `docs/EVIDENCE.md` for actual receipts and checks. Resolve the latest checkpoint commit with `git log -1 -- PROJECT_STATE.md`, then inspect `git --no-optional-locks status --short --branch`.
 
-Next engineering task: internal record P03-CONTEXT (planned). Read the P03 contract before collecting bounded OSM/land-cover context or defining events/sites. No classifier is built; history/rules are P04, trained structured model and evaluation P05. No MODIS/standard-product reconciliation, scheduler, raster features, cloud deployment or authentication is claimed by P02.
+Priority order until 30 September: (1) submission deck and portal package, (2) P03. The deck is not in this repository; the original PPT and official template live outside this folder.
+
+Next engineering task: internal record P03-CONTEXT (planned, unassigned, no code written). Read the P03 contract before collecting bounded OSM/land-cover context or defining events/sites. No classifier is built; history/rules are P04, trained structured model and evaluation P05. No MODIS/standard-product reconciliation, scheduler, raster features, cloud deployment or authentication is claimed by P02.
 
 ## Inputs still needed later
 
@@ -40,8 +44,8 @@ The corrected six-slide presentation/PDF and current portal requirements remain 
 
 ## Local resources
 
-API at `127.0.0.1:8000`, Vite development at `127.0.0.1:5173`, local PostGIS at `127.0.0.1:55432`; named volume `thermoscope_pgdata` retained. A temporary built-preview server uses `127.0.0.1:5174` during verification and will be stopped before handoff. All these are local processes, not public deployments. Inspect listeners before restarting duplicates. Stop task-owned servers normally and use `make db-stop` to retain database data.
+API at `127.0.0.1:8000`, Vite development at `127.0.0.1:5173`, local PostGIS at `127.0.0.1:55432`; named volume `thermoscope_pgdata` retained. A temporary built-preview server used `127.0.0.1:5174` during P02 verification. The integrator stopped at its usage limit before confirming shutdown, and the bridge shell runs in an isolated VM that cannot see Mac processes, so **whether 8000/5173/5174/55432 are still listening is unverified**. Check with `lsof -nP -iTCP -sTCP:LISTEN` on the Mac before starting anything. All these are local processes, not public deployments. Inspect listeners before restarting duplicates. Stop task-owned servers normally and use `make db-stop` to retain database data.
 
 ## Restart checks
 
-Inspect Git, run `make doctor`, and open the local observation view. Retain `.env`, raw objects, manifests and development data. Do not rerun the provider unnecessarily to make the timestamps look newer. Every real receipt already has an immutable manifest. Unknown historical publication/availability remains unknown. Interrupted RUNNING attempts need manual investigation until scheduled job recovery is implemented.
+Inspect Git with lock-free reads (`git --no-optional-locks...`) when another tool might be active, run `make doctor`, and open the local observation view. A stray ignored copy of the settings file, `.env. Open.env`, exists at the repository root; it is not tracked and should be deleted by the owner, not copied or read by contributors. Retain `.env`, raw objects, manifests and development data. Do not rerun the provider unnecessarily to make the timestamps look newer. Every real receipt already has an immutable manifest. Unknown historical publication/availability remains unknown. Interrupted RUNNING attempts need manual investigation until scheduled job recovery is implemented.
