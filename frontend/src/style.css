@@ -663,3 +663,91 @@ footer span {
     gap: 0;
   }
 }
+
+/* P03 facility context and events */
+.map-legend div + div {
+  margin-top: 4px;
+}
+.map-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+.legend-support {
+  border: 2px dashed #143e39;
+  border-radius: 50%;
+  width: 8px !important;
+  height: 8px !important;
+}
+.legend-facility {
+  background: #5b4b8a2e;
+  border: 1px solid #5b4b8a;
+}
+.context {
+  border-top: 1px solid #e2e6de;
+  margin-top: 18px;
+  padding-top: 16px;
+}
+.context-grid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 35px;
+}
+.context-status {
+  font-size: 12px;
+  margin: 4px 0 10px;
+  color: #22372c;
+}
+.context-status strong {
+  display: inline-block;
+  margin-right: 6px;
+}
+.retrospective {
+  background: #fff4d9;
+  border: 1px solid #e3d5a8;
+  color: #604c19;
+  padding: 7px 10px;
+  border-radius: 5px;
+  font-size: 11px;
+  margin: 8px 0 12px;
+}
+.candidates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.candidates li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  font-size: 11px;
+  border: 1px solid #e2e6de;
+  border-radius: 6px;
+  padding: 7px 9px;
+}
+.candidates li.inside {
+  border-color: #5b4b8a66;
+  background: #5b4b8a0a;
+}
+.candidates .where {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.candidates small {
+  color: #6a7e6e;
+  grid-column: 1 / -1;
+}
+.candidates a {
+  color: inherit;
+}
+@media (max-width: 850px) {
+  .context-grid {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+}

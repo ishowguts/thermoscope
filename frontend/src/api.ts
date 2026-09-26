@@ -1,3 +1,5 @@
+import type { FeatureCollection, Polygon } from "geojson";
+
 export type DataMode = "HISTORICAL_REPLAY" | "LIVE";
 export type Region = {
   id: string;
@@ -114,4 +116,133 @@ export function confidence(value: string | null): string {
       value ?? ""
     ] ?? "Not supplied"
   );
+}
+
+export type FacilityCandidate = {
+  osm_type: string;
+  osm_id: number;
+  osm_url: string;
+  name: string | null;
+  facility_type: string;
+  primary_tag: string;
+  geometry_kind: string;
+  osm_last_edited_at: string | null;
+  distance_m: number;
+  contains_pixel_centre: boolean;
+  support_overlap_fraction: number | null;
+  relation: "INSIDE_SUPPORT" | "NEARBY";
+};
+export type ObservationEvent = {
+  event_id: string;
+  run_id: string;
+  run_created_at: string;
+  algorithm_version: string;
+  started_at: string;
+  ended_at: string;
+  observation_count: number;
+  overpass_count: number;
+  max_frp_mw: number | null;
+  ambiguous_links: number;
+  site: {
+    site_id: string;
+    event_count: number;
+    observation_count: number;
+    first_seen_at: string;
+    last_seen_at: string;
+  };
+};
+export type ObservationContext = {
+  observation_id: string;
+  acquired_at: string;
+  support_region: {
+    version: string;
+    radius_m: number;
+    basis: "SCAN_TRACK" | "NOMINAL_VIIRS_I_BAND";
+    geolocation_buffer_m: number;
+    note: string;
+    geometry: Polygon;
+  };
+  facility_snapshot: null | {
+    id: string;
+    region_id: string;
+    osm_base_at: string;
+    retrieved_at: string;
+    facility_count: number;
+    query_version: string;
+    type_map_version: string;
+    license: string;
+    attribution: string;
+  };
+  context_timing: "RETROSPECTIVE" | "PRIOR_STATE" | null;
+  association: {
+    version: string;
+    status:
+      | "CONTEXT_NOT_COVERED"
+      | "NO_MAPPED_FEATURE_NEARBY"
+      | "NEARBY_ONLY"
+      | "SINGLE_MAPPED_FEATURE"
+      | "MULTIPLE_MAPPED_FEATURES";
+    features_in_support: number;
+    facility_types_in_support: string[];
+    context_radius_m: number;
+    candidates: FacilityCandidate[];
+    candidates_truncated: boolean;
+    note: string;
+  };
+  event: ObservationEvent | null;
+  event_note: string;
+};
+export type FacilityCollection = FeatureCollection & {
+  meta: {
+    truncated: boolean;
+    snapshots: {
+      id: string;
+      region_id: string;
+      osm_base_at: string;
+      retrieved_at: string;
+      license: string;
+      attribution: string;
+    }[];
+    note: string;
+  };
+};
+
+export function distance(metres: number): string {
+  return metres < 1000
+    ? `${Math.round(metres)} m`
+    : `${(metres / 1000).toLocaleString("en-GB", { maximumFractionDigits: 2 })} km`;
+}
+
+export function facilityType(value: string): string {
+  return (
+    (
+      {
+        REFINERY: "Refinery",
+        PETROCHEMICAL: "Petrochemical",
+        STEEL: "Steel",
+        POWER: "Power plant",
+        LNG: "LNG",
+        MINE: "Mine / quarry",
+        OTHER: "Other industrial",
+        UNKNOWN: "Industrial, type unknown",
+      } as Record<string, string>
+    )[value] ?? value
+  );
+}
+
+export function associationSummary(context: ObservationContext): string {
+  const a = context.association;
+  const nearest = a.candidates[0];
+  switch (a.status) {
+    case "MULTIPLE_MAPPED_FEATURES":
+      return `${a.features_in_support} mapped features fall inside the approximate pixel area. Any of them could be related; none is confirmed as the source.`;
+    case "SINGLE_MAPPED_FEATURE":
+      return "One mapped feature falls inside the approximate pixel area. Being close to it does not prove it is the source.";
+    case "NEARBY_ONLY":
+      return `No mapped feature inside the pixel area. The nearest is ${distance(nearest.distance_m)} away.`;
+    case "NO_MAPPED_FEATURE_NEARBY":
+      return `No mapped industrial feature within ${distance(a.context_radius_m)}. That is not evidence that none exists.`;
+    default:
+      return "No facility snapshot covers this location yet.";
+  }
 }
