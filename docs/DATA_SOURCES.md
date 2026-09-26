@@ -33,3 +33,7 @@ MapLibre uses `https://tile.openstreetmap.org/{z}/{x}/{y}.png` with visible Open
 | ESA WorldCover 10 m 2021 v200 (`esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/`) | Bounded windows around each observation; class fractions and small GeoTIFF chips in ignored `local/objects` | CC BY 4.0, published 28 October 2022, DOI [10.5281/zenodo.7254221](https://zenodo.org/records/7254221). Required map attribution: "© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium". Legend and nodata value confirmed from the [product user manual](https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/docs/WorldCover_PUM_V2.0.pdf) (SHA-256 `4301a3d95260d88bd4315f43ccf2a12ef74ad391109b9f36e22b6e51d8490107`) and the file itself (EPSG:4326, uint8, nodata 0). |
 
 Neither source labels a heat source. OSM tags propose what a mapped feature is; WorldCover 2021 describes surroundings five years before the pilot observations.
+
+## P04 history retrieval
+
+NASA FIRMS Area API, `VIIRS_NOAA20_NRT`, 1 July–21 September 2026, bounded to the three pilot regions in five-day windows, with the same citation and handling as P02 (provider/product/collection kept; key server-side only; raw CSVs ignored by Git). Standard-processing (SP) archive data before 1 July is available from FIRMS but not yet ingested; it needs its own parser and NRT/SP reconciliation.

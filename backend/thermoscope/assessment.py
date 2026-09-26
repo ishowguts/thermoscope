@@ -427,13 +427,30 @@ def priority_rule(source: dict, behaviour: dict) -> dict:
             "note": "POSSIBLE_ABNORMAL_INDUSTRIAL_EVENT — unusual FRP alone is not an incident.",
         }
     if s == "INDUSTRIAL" and b == "NEW_OR_TRANSIENT":
-        return {"label": "HIGH", "rule": "P2_NEW_HEAT_AT_MAPPED_INDUSTRY", "note": None}
+        return {
+            "label": "HIGH",
+            "rule": "P2_NEW_HEAT_AT_MAPPED_INDUSTRY",
+            "note": "New detection at a mapped industrial feature; check recent imagery and "
+            "operator or official records.",
+        }
     if s == "UNKNOWN" and (higher or b == "NEW_OR_TRANSIENT"):
-        return {"label": "REVIEW", "rule": "P3_UNRESOLVED_SOURCE_WITH_CHANGE", "note": None}
+        return {
+            "label": "REVIEW",
+            "rule": "P3_UNRESOLVED_SOURCE_WITH_CHANGE",
+            "note": "Source unresolved and activity has changed; look before dismissing it.",
+        }
     if b == "INSUFFICIENT_HISTORY" and s in {"INDUSTRIAL", "UNKNOWN"}:
-        return {"label": "MEDIUM", "rule": "P4_INCOMPLETE_EVIDENCE", "note": None}
+        return {
+            "label": "MEDIUM",
+            "rule": "P4_INCOMPLETE_EVIDENCE",
+            "note": "History or context is incomplete; revisit when more data is retrieved.",
+        }
     if s == "UNKNOWN":
-        return {"label": "MEDIUM", "rule": "P5_UNRESOLVED_SOURCE", "note": None}
+        return {
+            "label": "MEDIUM",
+            "rule": "P5_UNRESOLVED_SOURCE",
+            "note": "Source unresolved; activity is within its observed record.",
+        }
     if s == "INDUSTRIAL":
         return {
             "label": "LOW",

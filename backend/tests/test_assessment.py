@@ -178,7 +178,7 @@ def test_source_rules_abstain_instead_of_forcing_a_class(ctx, feats, label, deta
 )
 def test_priority_is_ordered_and_never_hides_persistent_sites(source, behaviour, expected):
     result = priority_rule({"label": source}, behaviour)
-    assert result["label"] == expected
+    assert result["label"] == expected and result["note"]  # every priority explains itself
     if (source, behaviour["label"]) == ("INDUSTRIAL", "RECURRENT_WITHIN_BASELINE"):
         assert "not suppressed" in result["note"]
 

@@ -131,3 +131,24 @@ Base: branch point `0aa9725` (P02 complete). Commits `99c2d6f` (OSM context), `4
 | Secret scan | Before each commit, the workspace database password was checked against the diff: zero matches. No FIRMS key exists in this workspace | The Mac's `.env` was never read |
 
 Evidence gaps that keep P03 in **review**, not done: (1) no person has reviewed an adjacent industrial/agricultural hard case; the Jamnagar power-plant group is the only candidate; (2) `make install`, migrations 0003–0005, `fetch-osm`, `extract-landcover` and the browser flow have not run on the owner's Mac (rasterio needs macOS 14+ there); (3) the built production preview was not re-checked after P03.
+
+## P04 implementation and verification — 27 September 2026 IST (branch `p04-history`)
+
+Base `31f0498` (P03 handoff). Commits `9c1f788` (history and rules), `8357770` (assessment panel and timeline), plus the documentation checkpoint containing this record. Same Linux workspace and toolchain as P03. **Not yet run on the owner's Mac.**
+
+| Check | Observed result | Scope / limitation |
+|---|---|---|
+| FIRMS data availability | NOAA-20 NRT 2026-07-01 → 2026-09-26; NOAA-20 SP → 2026-06-30 (file hash in `COVERAGE_INVENTORY.md`) | Checked at 23:11 UTC, 26 September |
+| History retrieval | 51 of 51 bounded requests HTTP 200 with the VIIRS schema; key read from `.env` inside the bridge shell, piped to curl, never printed; each response checked for the key | curl with the adapter's URL form, not the application's own fetch |
+| History import | 51 runs `SUCCEEDED`, 232 inserted, zero rejected; per-file SHA-256 matched sidecars | Historical replay mode; availability unknown by design |
+| `make check` | Ruff clean; **104 passed** (27 new assessment tests); Prettier; `tsc`; Vite build | Map chunk still over 500 kB |
+| `make integration` | **11 passed** (new: 95-day fixture history through the API — recurrent, spike → REVIEW, quiet location → new, operational exclusion, `as_of` validation, future exclusion, timeline retrieval flags) | Disposable databases |
+| GitHub Actions | Runs 36279214564 (`9c1f788`) and 36279461793 (`8357770`): **completed / success** | Clean Ubuntu install |
+| Rule behaviour on the pilot (retrospective) | Jamnagar power plant: industrial / persistent heat, within record (27 earlier N20 night overpasses, median 1.85 MW, z 0.89), LOW. North refinery: industrial, within record, LOW. South refinery: industrial / unresolved, new (no earlier detection in 83 retrieved days), HIGH. Four hotspots near the plant: UNKNOWN (mixed), MEDIUM. Singrauli: industrial / mining heat, within record (z −0.41), LOW. Punjab ×2: agricultural burn, new, LOW | Heuristic outcomes, uncalibrated thresholds, no reviewed labels |
+| Operational replay on the pilot | Every case: behaviour insufficient ("availability not on record"), source unknown ("no OSM snapshot had been retrieved by this time"), MEDIUM | Correct: this history and OSM data were retrieved after the observations |
+| Browser (headless Chromium, SwiftShader WebGL) | Three assessment cards with reasons, basis toggle, 180-day timeline (not-retrieved hatching, as-of line, tooltips on hover/focus kept inside the chart, table view) for Jamnagar, Singrauli and Punjab cases; **zero console errors or warnings** | Screenshots outside Git: `p04-power-tooltip.png` `d7325eb1…`, `p04-refinery-new-evidence.png` `64c049e8…`, `p04-singrauli-evidence.png` `23f28b30…`, `p04-punjab.png` `1498f8e9…`, `p04-power-operational.png` `cbe32e3a…`, `p04-timeline.png` `d9d7997c…` |
+| Chart palette | Night `#2a78d6` / day `#eb6834` validated with the dataviz validator: CVD ΔE 24.7, normal-vision ΔE 33.6, contrast ≥ 3:1 on the chart surface | Light theme only, matching the app |
+| Fixes found during verification | Unit-test tolerance vs 3-decimal rounding; "current max" wording clarified as the 24 h episode maximum within 750 m; groups not compared are listed; operational reason when the observation itself is unavailable; tooltip overflow at the right edge; y-axis headroom; empty priority notes | All re-checked |
+| Secret scan | Workspace database password: zero matches in each diff; no FIRMS key in the cloud workspace | The Mac `.env` was read only inside the bridge shell |
+
+Open items: thresholds need calibration on reviewed cases (P05); 180-day windows are ~50% covered until the SP archive is added; the Mac run; the P03 hard-case review.
