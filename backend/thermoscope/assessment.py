@@ -206,10 +206,18 @@ def behaviour_rule(features: dict) -> dict:
     current = features["current"]["max_frp_by_group"]
     reasons = []
     if not current:
+        unavailable = features["basis"] == Basis.OPERATIONAL and (
+            features["excluded_unknown_availability"] > 0
+        )
         return {
             "label": "INSUFFICIENT_HISTORY",
             "rule": "B0_NO_CURRENT_FRP",
-            "reasons": ["The current episode has no usable FRP value to compare."],
+            "reasons": [
+                "Operational replay cannot use this observation: its availability at the time "
+                "is not on record (it arrived by file import or a later fetch)."
+                if unavailable
+                else "The current episode has no usable FRP value to compare."
+            ],
         }
     if base["coverage_fraction"] < MIN_COVERAGE:
         return {
@@ -650,11 +658,31 @@ def observation_timeline(
                 "max_frp_mw": max(frps) if frps else None,
             }
         )
+    start = as_of - timedelta(days=days)
+    in_range = [d for d in usable if d.acquired_at >= start]
+    passes: dict[tuple, dict] = {}
+    for d in in_range:
+        item = passes.setdefault(
+            (d.acquired_at, d.satellite, d.daynight),
+            {
+                "acquired_at": d.acquired_at,
+                "satellite": d.satellite,
+                "daynight": d.daynight,
+                "group": group_key(d),
+                "detections": 0,
+                "max_frp_mw": None,
+            },
+        )
+        item["detections"] += 1
+        if d.frp_mw is not None:
+            item["max_frp_mw"] = max(item["max_frp_mw"] or 0.0, d.frp_mw)
     return {
         "observation_id": observation_id,
         "as_of": as_of,
         "basis": basis,
         "radius_m": SITE_RADIUS_M,
+        "episode_start": as_of - timedelta(hours=EPISODE_HOURS),
+        "overpasses": [passes[k] for k in sorted(passes)],
         "days": series,
         "note": "Days not retrieved are unknown, not zero. A retrieved day without a detection "
         "can still hide heat under cloud or between overpasses.",

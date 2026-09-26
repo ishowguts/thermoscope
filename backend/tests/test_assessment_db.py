@@ -85,6 +85,7 @@ def test_history_rules_availability_and_timeline(configured):
     assert operational["behaviour"]["label"] == "INSUFFICIENT_HISTORY"
     assert operational["features"]["excluded_unknown_availability"] >= 19
     assert operational["source"]["reason_code"] == "CONTEXT_UNAVAILABLE_AS_OF"
+    assert "not on record" in operational["behaviour"]["reasons"][0]
 
     later = get(spike_id, as_of="2026-04-12T00:00:00Z").json()
     assert later["features"]["excluded_after_as_of"] == 0
@@ -109,3 +110,6 @@ def test_history_rules_availability_and_timeline(configured):
     assert by_day["2026-01-03"]["retrieved"] and by_day["2026-01-03"]["detections"] == 1
     assert not by_day["2025-12-31"]["retrieved"]  # never fetched: unknown, not zero
     assert get(spike_id, "timeline", days=500).status_code == 422
+    passes = timeline["overpasses"]
+    assert passes[-1]["max_frp_mw"] == 40.0 and passes[-1]["group"] == "N20/N"
+    assert all(p["acquired_at"] <= timeline["as_of"] for p in passes)
