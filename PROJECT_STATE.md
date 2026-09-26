@@ -4,6 +4,8 @@ Checkpoint: 27 September 2026, 03:55 IST, written after taking over. Stage: **P0
 
 **Every session reads the internal handoff log first**: it says which tool last wrote, where it took over, where it stopped and the exact next action.
 
+**Current split (owner's decision, 27 September 04:00 IST): the implementer is building P03 on branch `p03-context`; the integrator owns the six-slide deck (internal record SUBMISSION-DECK). The implementer has not started the PPT.**
+
 Canonical workspace: the fresh `thermoscope` folder. Remote: https://github.com/ishowguts/thermoscope, private. Branch: `main`. Original Part 1 and ThermalGuard projects remain historical references.
 
 ## Verified implementation
@@ -26,9 +28,9 @@ Registered team: **Git_Push_Pray**, leader **Bittu Mandal**, Team ID **144613**,
 
 Last completed task: internal record P02-FIRMS-MAP — **done**. Implementation commit `43cf2b0453a559a4841a05de73413211d9200e3e`, pushed; CI success. Read `docs/EVIDENCE.md` for actual receipts and checks. Resolve the latest checkpoint commit with `git log -1 -- PROJECT_STATE.md`, then inspect `git --no-optional-locks status --short --branch`.
 
-Priority order until 30 September: (1) submission deck and portal package, (2) P03. The deck is not in this repository; the original PPT and official template live outside this folder.
+Priority order until 30 September: (1) submission deck and portal package, (2) P03 (in parallel on its own branch). The deck is not in this repository; the original PPT and official template live outside this folder.
 
-Next engineering task: internal record P03-CONTEXT (planned, unassigned, no code written). Read the P03 contract before collecting bounded OSM/land-cover context or defining events/sites. No classifier is built; history/rules are P04, trained structured model and evaluation P05. No MODIS/standard-product reconciliation, scheduler, raster features, cloud deployment or authentication is claimed by P02.
+Engineering task in progress: internal record P03-CONTEXT, owner the implementer, branch `p03-context`. Read the P03 contract before collecting bounded OSM/land-cover context or defining events/sites. No classifier is built; history/rules are P04, trained structured model and evaluation P05. No MODIS/standard-product reconciliation, scheduler, raster features, cloud deployment or authentication is claimed by P02.
 
 ## Inputs still needed later
 
@@ -44,7 +46,7 @@ The corrected six-slide presentation/PDF and current portal requirements remain 
 
 ## Local resources
 
-API at `127.0.0.1:8000`, Vite development at `127.0.0.1:5173`, local PostGIS at `127.0.0.1:55432`; named volume `thermoscope_pgdata` retained. A temporary built-preview server used `127.0.0.1:5174` during P02 verification. The integrator stopped at its usage limit before confirming shutdown, and the bridge shell runs in an isolated VM that cannot see Mac processes, so **whether 8000/5173/5174/55432 are still listening is unverified**. Check with `lsof -nP -iTCP -sTCP:LISTEN` on the Mac before starting anything. All these are local processes, not public deployments. Inspect listeners before restarting duplicates. Stop task-owned servers normally and use `make db-stop` to retain database data.
+API at `127.0.0.1:8000`, Vite development at `127.0.0.1:5173`, local PostGIS at `127.0.0.1:55432`; named volume `thermoscope_pgdata` retained. A temporary built-preview server used `127.0.0.1:5174` during P02 verification. The owner's `lsof` at 03:59 IST showed all four still listening (8000 python PID 68131, 5173 node PID 28282, 5174 node PID 68167, 55432 Docker). The 5174 preview is stale and should be stopped; keep the database. Recheck with `lsof -nP -iTCP -sTCP:LISTEN` before starting anything. All these are local processes, not public deployments. Inspect listeners before restarting duplicates. Stop task-owned servers normally and use `make db-stop` to retain database data.
 
 ## Restart checks
 
