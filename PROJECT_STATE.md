@@ -1,6 +1,6 @@
 # Project state
 
-Checkpoint: 26 September 2026 IST. Stage: **P01 foundation implemented; final repository/CI checkpoint in progress**.
+Checkpoint: 26 September 2026 IST. Stage: **P01 complete; P02 planned**.
 
 Canonical workspace: the fresh `thermoscope` folder. Remote: https://github.com/ishowguts/thermoscope, created private on 26 September 2026 IST. Branch: `main`. Use the fresh repository for future work; originals remain historical references.
 
@@ -21,7 +21,7 @@ Canonical workspace: the fresh `thermoscope` folder. Remote: https://github.com/
 
 ## Current task
 
-Current engineering task: internal record P01-FOUNDATION, status **review**, starting from `84fb66f7622a5a2c6479c6f6b26c404f6f71d752`. Read `docs/EVIDENCE.md` for checks that were actually performed.
+Completed task: internal record P01-FOUNDATION, implementation commit `217e4a7a26dc71a7467f538bf9740d0ab78c2b84`. GitHub Actions run 36239752092 passed on Ubuntu, including frozen install, unit/API checks, frontend build and real PostGIS integration. Next task: internal record P02-FIRMS-MAP, planned. Read `docs/EVIDENCE.md` for checks that were actually performed.
 
 This ledger cannot contain its own final commit hash without becoming stale. Resolve the checkpoint with `git log -1 -- PROJECT_STATE.md` and inspect `git status --short --branch`. Task handoffs record the base commit and subsequent evidence commits.
 
@@ -40,3 +40,9 @@ This ledger cannot contain its own final commit hash without becoming stale. Res
 ## Restart instruction
 
 Inspect Git, run `make doctor`, and read internal record P02-FIRMS-MAP. P01 is the foundation; ingestion, map and classifier do not exist. P02 starts with the saved real Jamnagar CSV and a bounded NASA request. Preserve source hashes and distinguish historical replay from live ingestion. The parallel submission priority remains the six-slide PDF and verified portal requirements; the old PPT has not yet been edited or submitted.
+
+## Local resources at checkpoint
+
+Development API is running on `127.0.0.1:8000`; Vite is running on `127.0.0.1:5173`; Docker container `thermoscope-db-1` is healthy on loopback port 55432. No cloud services provisioned. Stop the owned development processes with Ctrl+C and use `make db-stop` to stop the database while retaining its volume. On session restart, verify listeners before starting duplicates.
+
+The code commit passed CI. The subsequent checkpoint commit only updates evidence/state/task documentation and uses `[skip ci]` to avoid repeating an unchanged suite.

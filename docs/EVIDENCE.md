@@ -57,3 +57,12 @@ Base commit `84fb66f7622a5a2c6479c6f6b26c404f6f71d752`; implementation changes i
 Corrections made during verification: initial Make command lookup selected system tools; the explicit shell wrapper now selects the pinned local tools. TypeScript 7 required Vite's CSS module declarations. Alembic's path separator is explicit. Starlette's deprecated test HTTP client was replaced with its documented stable httpx2 client, and the suite passed without those deprecation warnings. The GDAL query failed because raster support is not enabled; raster validation remains pending. npm reported an unapproved optional fsevents install script on macOS; it was not approved, and installation/build succeeded with that restriction.
 
 GitHub Actions is configured to use the same frozen install and check commands on Ubuntu with the digest-pinned PostGIS service. Remote run evidence is recorded separately after push; a workflow file alone is not a passed CI run.
+
+## P01 remote verification and checkpoint — 26 September 2026
+
+- Implementation commit: `217e4a7a26dc71a7467f538bf9740d0ab78c2b84`, pushed to private `ishowguts/thermoscope`; local branch matched origin after push.
+- [GitHub Actions run 36239752092](https://github.com/ishowguts/thermoscope/actions/runs/36239752092), job 108397919111: **completed / success**. Official actions setup, fresh frozen install, `make check`, `make integration` and container cleanup all succeeded on Ubuntu 24.04. This supplies independent clean-checkout Linux evidence in addition to local macOS checks.
+- PyPI advisory metadata checked for all 33 third-party locked package versions: no reported vulnerabilities in that snapshot. License metadata saved to ignored `local/python-package-review.json`; Colorama's license is given in its BSD classifier rather than SPDX field. This is not legal clearance or a complete security audit.
+- 46 changed files were scanned before implementation push: zero exact matches for the local FIRMS key/database secret/connection string. Ignore checks for `.env`, real NASA samples, Python environment and npm dependencies passed; `.env` is mode 0600.
+- Fifteen relative Markdown links resolved. All three saved NASA sample SHA-256 values matched their coverage manifests.
+- P01 marked complete. Final checkpoint changes are documentation only and skip repeat CI; no code changed after the successful run. Local preview/database remain running as listed in `PROJECT_STATE.md`.
