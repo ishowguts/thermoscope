@@ -14,6 +14,7 @@ from sqlalchemy import text
 from thermoscope.config import DataMode, Settings
 from thermoscope.database import database_engine
 from thermoscope.events import observation_event
+from thermoscope.landcover import observation_landcover
 from thermoscope.osm import PROVIDER
 from thermoscope.regions import Bounds
 
@@ -160,6 +161,7 @@ def observation_context(settings: Settings, observation_id: str, mode: DataMode)
         else:
             truncated = False
         event = observation_event(conn, observation_id, mode)
+        land_cover = observation_landcover(conn, observation_id, obs["acquired_at"])
     in_support = [c for c in candidates if c["relation"] == "INSIDE_SUPPORT"]
     snapshot_block = None
     timing = None
@@ -201,6 +203,7 @@ def observation_context(settings: Settings, observation_id: str, mode: DataMode)
             "candidates_truncated": truncated,
             "note": MISSINGNESS_NOTE,
         },
+        "land_cover": land_cover,
         "event": event,
         "event_note": (
             "Not grouped yet: run the event builder for this region and mode."

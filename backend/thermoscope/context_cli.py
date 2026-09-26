@@ -9,6 +9,7 @@ from thermoscope.config import DataMode, Settings
 from thermoscope.context_ingestion import ingest_osm
 from thermoscope.events import build_event_run
 from thermoscope.firms import IngestError
+from thermoscope.landcover import extract_landcover
 from thermoscope.osm import MAX_BYTES, OVERPASS_ENDPOINTS
 from thermoscope.regions import REGIONS
 
@@ -17,7 +18,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Bounded regional facility context and event/site grouping"
     )
-    parser.add_argument("command", choices=["fetch-osm", "import-osm", "build-events"])
+    parser.add_argument(
+        "command", choices=["fetch-osm", "import-osm", "build-events", "extract-landcover"]
+    )
     parser.add_argument("--region", choices=[r["id"] for r in REGIONS], required=True)
     parser.add_argument("--file", type=Path)
     parser.add_argument("--sha256")
@@ -35,6 +38,12 @@ def main(argv=None):
     if args.command == "fetch-osm" and (args.file or args.sha256 or args.retrieved_at):
         parser.error("fetch-osm does not accept file settings")
     try:
+        if args.command == "extract-landcover":
+            report = extract_landcover(
+                Settings(), args.region, DataMode(args.data_mode), force=args.force
+            )
+            print(json.dumps(report))
+            return 1 if report["status"] == "PARTIAL" else 0
         if args.command == "build-events":
             report = build_event_run(
                 Settings(), args.region, DataMode(args.data_mode), force=args.force

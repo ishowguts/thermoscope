@@ -12,6 +12,7 @@ import {
   confidence,
   distance,
   facilityType,
+  landCoverMix,
   measurement,
   readApi,
   utc,
@@ -69,6 +70,7 @@ function Context({
   const snapshot = context.facility_snapshot;
   const s = context.support_region;
   const event = context.event;
+  const land = context.land_cover;
   return (
     <section className="context" aria-label="Mapped context">
       <div className="context-grid">
@@ -137,6 +139,22 @@ function Context({
                 ? `OpenStreetMap as of ${utc(snapshot.osm_base_at)}`
                 : "No snapshot for this location"}
             </dd>
+            <dt>Land cover in area</dt>
+            <dd>
+              {land
+                ? land.status === "OK"
+                  ? landCoverMix(land.support)
+                  : `Too few valid pixels (${Math.round(land.support.valid_fraction * 100)}% valid)`
+                : "Not extracted yet"}
+            </dd>
+            <dt>Within 1 km</dt>
+            <dd>{land ? landCoverMix(land.context) : "—"}</dd>
+            <dt>Land-cover date</dt>
+            <dd>
+              {land
+                ? `ESA WorldCover ${land.map_year} (${land.age_years_at_observation} years before this observation)`
+                : "—"}
+            </dd>
             <dt>Event</dt>
             <dd>
               {event
@@ -153,6 +171,12 @@ function Context({
           <p className="help">
             {s.note} {context.event_note}
           </p>
+          {land && (
+            <p className="help">
+              {land.note} {land.accuracy_note}. {land.attribution} (
+              {land.license}).
+            </p>
+          )}
         </div>
       </div>
     </section>

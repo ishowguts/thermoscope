@@ -189,8 +189,33 @@ export type ObservationContext = {
     candidates_truncated: boolean;
     note: string;
   };
+  land_cover: LandCover | null;
   event: ObservationEvent | null;
   event_note: string;
+};
+export type LandCoverSummary = {
+  radius_m: number;
+  pixels: number;
+  valid_pixels: number;
+  nodata_pixels: number;
+  valid_fraction: number;
+  fractions: { class: string; fraction: number }[];
+};
+export type LandCover = {
+  product: string;
+  map_year: number;
+  published_on: string;
+  age_years_at_observation: number;
+  status: "OK" | "INSUFFICIENT";
+  tile_id: string;
+  tile_edge_clipped: boolean;
+  support: LandCoverSummary;
+  context: LandCoverSummary;
+  license: string;
+  doi: string;
+  attribution: string;
+  accuracy_note: string;
+  note: string;
 };
 export type FacilityCollection = FeatureCollection & {
   meta: {
@@ -245,4 +270,35 @@ export function associationSummary(context: ObservationContext): string {
     default:
       return "No facility snapshot covers this location yet.";
   }
+}
+
+export function landCoverClass(value: string): string {
+  return (
+    (
+      {
+        TREE_COVER: "Tree cover",
+        SHRUBLAND: "Shrubland",
+        GRASSLAND: "Grassland",
+        CROPLAND: "Cropland",
+        BUILT_UP: "Built-up",
+        BARE_SPARSE_VEGETATION: "Bare / sparse vegetation",
+        SNOW_ICE: "Snow and ice",
+        PERMANENT_WATER: "Permanent water",
+        HERBACEOUS_WETLAND: "Herbaceous wetland",
+        MANGROVES: "Mangroves",
+        MOSS_LICHEN: "Moss and lichen",
+      } as Record<string, string>
+    )[value] ?? value
+  );
+}
+
+export function landCoverMix(summary: LandCoverSummary): string {
+  if (!summary.fractions.length) return "No valid land-cover pixels";
+  return summary.fractions
+    .slice(0, 3)
+    .map(
+      (item) =>
+        `${landCoverClass(item.class)} ${Math.round(item.fraction * 100)}%`,
+    )
+    .join(" · ");
 }
