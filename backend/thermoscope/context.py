@@ -58,6 +58,83 @@ def summarize(candidates: list[dict], covered: bool) -> str:
     return "NEARBY_ONLY" if candidates else "NO_MAPPED_FEATURE_NEARBY"
 
 
+def find_snapshot(conn, lon: float, lat: float, provider: str, received_by=None):
+    """Newest snapshot covering the point; optionally only one already retrieved by a time."""
+    return (
+        conn.execute(
+            text("""
+        SELECT id,region_id,osm_base_at,first_received_at,facility_count,query_version,
+            type_map_version,license,attribution
+        FROM facility_snapshots
+        WHERE provider=:provider AND ST_Covers(bounds,ST_SetSRID(ST_Point(:lon,:lat),4326))
+            AND (CAST(:received_by AS timestamptz) IS NULL
+                 OR first_received_at <= CAST(:received_by AS timestamptz))
+        ORDER BY osm_base_at DESC,id LIMIT 1
+    """),
+            {"lon": lon, "lat": lat, "provider": provider, "received_by": received_by},
+        )
+        .mappings()
+        .first()
+    )
+
+
+def find_candidates(conn, lon: float, lat: float, radius: float, snapshot_id):
+    rows = (
+        conn.execute(
+            text("""
+        WITH p AS (SELECT ST_SetSRID(ST_Point(:lon,:lat),4326) AS g),
+        s AS (SELECT ST_Buffer(p.g::geography,:radius) AS support FROM p)
+        SELECT f.osm_type,f.osm_id,f.name,f.facility_type,f.primary_tag,f.build,
+            f.osm_timestamp,
+            ST_Distance(p.g::geography,f.geom::geography) AS distance_m,
+            ST_Covers(f.geom,p.g) AS contains_centre,
+            CASE WHEN GeometryType(f.geom) IN ('POLYGON','MULTIPOLYGON')
+                AND ST_DWithin(p.g::geography,f.geom::geography,:radius)
+            THEN ST_Area(ST_Intersection(s.support,f.geom::geography))
+                / ST_Area(s.support) END AS support_overlap
+        FROM facilities f,p,s
+        WHERE f.snapshot_id=:snapshot
+            AND ST_DWithin(p.g::geography,f.geom::geography,:context_radius)
+        ORDER BY distance_m,f.osm_type,f.osm_id
+        LIMIT :cap
+    """),
+            {
+                "lon": lon,
+                "lat": lat,
+                "radius": radius,
+                "snapshot": snapshot_id,
+                "context_radius": CONTEXT_RADIUS_M,
+                "cap": MAX_CANDIDATES + 1,
+            },
+        )
+        .mappings()
+        .all()
+    )
+    candidates = []
+    for row in rows[:MAX_CANDIDATES]:
+        distance = float(row["distance_m"])
+        overlap = row["support_overlap"]
+        candidates.append(
+            {
+                "osm_type": row["osm_type"],
+                "osm_id": row["osm_id"],
+                "osm_url": f"https://www.openstreetmap.org/{row['osm_type']}/{row['osm_id']}",
+                "name": row["name"],
+                "facility_type": row["facility_type"],
+                "primary_tag": row["primary_tag"],
+                "geometry_kind": row["build"],
+                "osm_last_edited_at": row["osm_timestamp"],
+                "distance_m": round(distance, 1),
+                "contains_pixel_centre": bool(row["contains_centre"]),
+                "support_overlap_fraction": (
+                    None if overlap is None else round(min(float(overlap), 1.0), 4)
+                ),
+                "relation": "INSIDE_SUPPORT" if distance <= radius else "NEARBY",
+            }
+        )
+    return candidates, len(rows) > MAX_CANDIDATES
+
+
 def observation_context(settings: Settings, observation_id: str, mode: DataMode) -> dict | None:
     with (
         database_engine(settings) as engine,
@@ -91,75 +168,12 @@ def observation_context(settings: Settings, observation_id: str, mode: DataMode)
         """),
             point,
         ).scalar_one()
-        snapshot = (
-            conn.execute(
-                text("""
-            SELECT id,region_id,osm_base_at,first_received_at,facility_count,query_version,
-                type_map_version,license,attribution
-            FROM facility_snapshots
-            WHERE provider=:provider AND ST_Covers(bounds,ST_SetSRID(ST_Point(:lon,:lat),4326))
-            ORDER BY osm_base_at DESC,id LIMIT 1
-        """),
-                point | {"provider": snapshot_provider(mode)},
-            )
-            .mappings()
-            .first()
-        )
-        candidates = []
+        snapshot = find_snapshot(conn, obs["lon"], obs["lat"], snapshot_provider(mode))
+        candidates, truncated = [], False
         if snapshot is not None:
-            rows = (
-                conn.execute(
-                    text("""
-                WITH p AS (SELECT ST_SetSRID(ST_Point(:lon,:lat),4326) AS g),
-                s AS (SELECT ST_Buffer(p.g::geography,:radius) AS support FROM p)
-                SELECT f.osm_type,f.osm_id,f.name,f.facility_type,f.primary_tag,f.build,
-                    f.osm_timestamp,
-                    ST_Distance(p.g::geography,f.geom::geography) AS distance_m,
-                    ST_Covers(f.geom,p.g) AS contains_centre,
-                    CASE WHEN GeometryType(f.geom) IN ('POLYGON','MULTIPOLYGON')
-                        AND ST_DWithin(p.g::geography,f.geom::geography,:radius)
-                    THEN ST_Area(ST_Intersection(s.support,f.geom::geography))
-                        / ST_Area(s.support) END AS support_overlap
-                FROM facilities f,p,s
-                WHERE f.snapshot_id=:snapshot
-                    AND ST_DWithin(p.g::geography,f.geom::geography,:context_radius)
-                ORDER BY distance_m,f.osm_type,f.osm_id
-                LIMIT :cap
-            """),
-                    point
-                    | {
-                        "snapshot": snapshot["id"],
-                        "context_radius": CONTEXT_RADIUS_M,
-                        "cap": MAX_CANDIDATES + 1,
-                    },
-                )
-                .mappings()
-                .all()
+            candidates, truncated = find_candidates(
+                conn, obs["lon"], obs["lat"], radius, snapshot["id"]
             )
-            for row in rows[:MAX_CANDIDATES]:
-                distance = float(row["distance_m"])
-                overlap = row["support_overlap"]
-                candidates.append(
-                    {
-                        "osm_type": row["osm_type"],
-                        "osm_id": row["osm_id"],
-                        "osm_url": f"https://www.openstreetmap.org/{row['osm_type']}/{row['osm_id']}",
-                        "name": row["name"],
-                        "facility_type": row["facility_type"],
-                        "primary_tag": row["primary_tag"],
-                        "geometry_kind": row["build"],
-                        "osm_last_edited_at": row["osm_timestamp"],
-                        "distance_m": round(distance, 1),
-                        "contains_pixel_centre": bool(row["contains_centre"]),
-                        "support_overlap_fraction": (
-                            None if overlap is None else round(min(float(overlap), 1.0), 4)
-                        ),
-                        "relation": "INSIDE_SUPPORT" if distance <= radius else "NEARBY",
-                    }
-                )
-            truncated = len(rows) > MAX_CANDIDATES
-        else:
-            truncated = False
         event = observation_event(conn, observation_id, mode)
         land_cover = observation_landcover(conn, observation_id, obs["acquired_at"])
     in_support = [c for c in candidates if c["relation"] == "INSIDE_SUPPORT"]
