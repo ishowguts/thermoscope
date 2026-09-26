@@ -17,7 +17,8 @@ This ledger records completed verification, not planned checks. Large audit down
 | Fresh remote repository | Creation UI and connector confirm `ishowguts/thermoscope`, private, push/admin permission | No application deployment or public release |
 | Specification package check | 21 text files; 12 relative Markdown links resolve; DOCX ZIP/XML valid; no credential-pattern findings after checking empty-setting false positives | Local structural/content scan, not a full application security audit |
 | Ignore rules | `git check-ignore` confirms `.env`, `.env.local`, local objects and raw data excluded | `.env.example` contains empty/example settings only |
-| Final briefing revision | Eight rendered pages; pages 1-6 and 8 unchanged by image hash; revised page 7 visually reviewed | Confirms the user's available team-leader login |
+| Final briefing revisions | Eight rendered pages; all pages visually inspected, with every changed page rechecked after revision | Confirms the user's available team-leader login and clean title/heading layout |
+| Remote content verification | Initial commit `c534b7478aa1a6b3640a4a74e6a35124f142133c` pushed; connector confirmed matching remote `main` and 21 file blobs | Local working tree clean after push; originals preserved |
 
 ## Not yet performed
 
