@@ -22,7 +22,17 @@ This ledger records completed verification, not planned checks. Large audit down
 
 ## Not yet performed
 
-Fresh application installation, backend/frontend tests, PostGIS migration tests, NASA credential acceptance, live ingest, model training/evaluation, deployed browser tests, offline application replay, cloud restore or SIH submission. Do not cite this planning ledger as proof of those capabilities.
+Fresh application installation, backend/frontend tests, PostGIS migration tests, Earthdata credential acceptance, application ingestion, model training/evaluation, deployed browser tests, offline application replay, cloud restore or SIH submission. Do not cite this planning ledger as proof of those capabilities.
+
+## FIRMS access check — 26 September 2026
+
+- Time: 10:36:45 UTC (16:06:45 IST); source commit at check: `4b73904059707832f66d96aa5eab8448a14eea10`.
+- Credential stored only in ignored `.env`, file mode `0600`. Git ignore checks passed; an exact-value scan found no credential in tracked files. No key or key-bearing URL is recorded here.
+- Command: bundled Python running `local/access-checks/check_firms.py`, exit 0. This is a local prerequisite check, not application implementation.
+- Request: NASA FIRMS Area CSV, `VIIRS_NOAA20_NRT`, bounds west 69.5 / south 22 / east 70.5 / north 23, latest UTC day, day range 1. Redirects disabled; response and timeout bounded; errors sanitized.
+- Result: HTTP 200, expected VIIRS fields present, 122 response bytes, zero observation rows. Empty data does not prove the region had no fires or establish scientific coverage.
+- Local evidence: `local/access-checks/firms-access-result.json` and `local/access-checks/firms-noaa20-access-sample-20260926T103645Z.csv`, both ignored. CSV SHA-256: `2b11a44667d05367ecf77651b95fd3d34c545c7ec154856094b91245e41ae697`.
+- Conclusion: FIRMS endpoint access is ready. A populated sample, historical availability, application parsing/storage and inference still require their own checks. Earthdata has not been tested.
 
 ## Record format for future checks
 

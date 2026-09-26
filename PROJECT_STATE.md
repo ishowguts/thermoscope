@@ -13,7 +13,7 @@ Canonical workspace: the fresh `thermoscope` folder. Remote: https://github.com/
 - Candidate versions checked against official registries/documentation. No application dependency combination has been installed or certified.
 - GitHub connector identifies `ishowguts` and confirms push/admin access to the new private repository; old `sa-mael451/thermo-scope-part1` access is read-only.
 - User is team leader and reports having SIH login access. No portal submission performed.
-- NASA credentials are not yet confirmed. Setup instructions are in `docs/ACCESS_SETUP.md`.
+- FIRMS MAP_KEY saved in ignored local settings and validated on 26 September 2026 at 10:36 UTC: NASA returned HTTP 200 with the expected VIIRS CSV schema. The bounded one-day Jamnagar-area query returned zero rows. This confirms access, not completed ingestion or usable model data. Earthdata access remains unconfirmed.
 
 ## Current task
 
@@ -25,7 +25,7 @@ This ledger cannot contain its own final commit hash without becoming stale. Res
 
 | Input | Needed for | Current state |
 |---|---|---|
-| FIRMS MAP_KEY | Live ingestion acceptance | User requested setup instructions |
+| FIRMS MAP_KEY | Live ingestion acceptance | Local credential/access check passed; application ingestion still pending |
 | Earthdata login and selected archive authorization | Historical/HLS access | Setup instructions prepared |
 | Team ID, registered name, current portal limits | Submission-ready deck | Not yet recorded; leader has login |
 | Pilot geography/date coverage | Data collection | Candidate regions only |
