@@ -106,3 +106,28 @@ Session: the implementer, taking over after the integrator reached its usage lim
 P02 marked done. The checkpoint commit that contains this record changes documentation only and uses `[skip ci]`; no code changed after the successful run.
 
 Incident during takeover: an ordinary `git status` from the bridge shell at about 03:43 IST created `.git/index.lock` and could not remove it (deletion was not yet permitted). It was an empty file created by that command, and it was deleted at about 03:45 IST once permission was granted. Any Git error from another tool in that window came from this, not from repository corruption. Bridged sessions now use lock-free reads.
+
+## P03 implementation and verification — 27 September 2026 IST (branch `p03-context`)
+
+Base: branch point `0aa9725` (P02 complete). Commits `99c2d6f` (OSM context), `43ce845` (events/sites), `430acd6` (workbench UI), `e3c0117` (land cover), plus the documentation checkpoint containing this record. Environment: Linux x86_64 cloud workspace, Python 3.13.15, uv 0.12.19, Node 24.21.0, digest-pinned PostGIS 18-3.6 in Docker, rasterio 1.5.1 / GDAL 3.12.4. **Not yet run on the owner's Mac.**
+
+| Check | Observed result | Scope / limitation |
+|---|---|---|
+| Baseline before changes | `make check` 41 passed; `make integration` 6 passed | Same numbers as P02 CI, confirming the workspace matches |
+| `make check` after P03 | Ruff lint/format clean; **77 passed** (36 new: 24 OSM/support, 6 events, 6 land cover); Prettier; `tsc --noEmit`; Vite build | Vite still warns the lazy map chunk is over 500 kB |
+| `make integration` after P03 | **10 passed** (4 new): context association, timing/hash/outage, events/lineage, land cover | Disposable databases created and dropped by the tests |
+| GitHub Actions on `p03-context` | Runs 36277388287 (`99c2d6f`), 36277616785 (`43ce845`), 36277883106 (`430acd6`), 36278247417 (`e3c0117`): all **completed / success** | Clean Ubuntu install including rasterio wheels |
+| Metre distances | Point 0.001° of longitude from a facility at 22.3° N: PostGIS 103.0 m vs WGS84 formula 103.04 m; 0.012° gives 1236.5 m vs 1236.5 m | Asserted to ±0.5 m / ±1 m in tests |
+| Geometry handling | Relation with a hole: observation inside the hole is not "inside" and is 103 m from the edge; self-intersecting polygon repaired to a valid area; zero-area polygon quarantined as `INVALID_GEOMETRY` | Fixture geometry, labelled as such |
+| Provider behaviour (unit) | Busy primary (504) falls back to the allowed mirror; HTTP-200 answer with a runtime-error remark rejected as `OVERPASS_INCOMPLETE` and retried; a 400 stops immediately; an unlisted host is refused; failure codes carry no request details | The 400 case was a real bug found by the test and fixed before commit |
+| Real OSM retrieval | Adapter query text sent from the owner's bridge shell at 22:40–22:41 UTC: main server returned 504 once during sizing, then 200 for all three regions; responses and hashes in `COVERAGE_INVENTORY.md` | Retrieved with curl using the adapter's exact query, not by the adapter's own HTTP client; `fetch-osm` itself still needs one run on the Mac |
+| Real OSM import | 313 / 208 / 126 elements accepted, zero rejected, all geometries valid; re-import of identical bytes reuses the snapshot | Current OSM applied to 22–25 September observations is flagged retrospective |
+| Real association (13 observations) | 3 inside the mapped Reliance refinery; 7 around one mapped power plant (3 with it inside the pixel area); Singrauli 122 m from Jhingurdah Mine; Punjab: nothing within 2 km | Context only; no reviewed source label |
+| Real events | Jamnagar 10 → 5 events at 3 sites; Singrauli 1 → 1; Punjab 2 → 2 events at 2 sites; unchanged rebuild returns `UNCHANGED` | Event grouping, not incidents |
+| Real land cover | All 13 windows 100% valid; refinery 96% built-up; Punjab 99% and 71% cropland; Singrauli tree/grass/bare | WorldCover 2021, five years older than the observations; product global accuracy 76.7 ± 0.5 % |
+| Land-cover ordering bug | JSONB reordered class keys, so "largest first" was lost after storage; fixed by returning a ranked list, with a test | Found by inspecting real output, not by the first tests |
+| Browser (headless Chromium 1194, SwiftShader WebGL, Vite dev server + API) | Region map with facility layer; selecting refinery, power-plant, Singrauli and Punjab observations shows the dashed pixel area, candidate list, retrospective warning, land cover, event and site; map-hidden mode keeps the evidence panel; **zero console errors or warnings** after adding an inline favicon (the earlier 404 was `/favicon.ico`) | Screenshots outside Git: `ui-jamnagar-region.png` `00c170f0…`, `ui-refinery-landcover.png` `ba3f846e…`, `ui-power-selected.png` `5a30ecd3…`, `ui-punjab-landcover.png` `a6dcfbd9…`, `ui-singrauli-selected.png` `63c66bf9…`. Not the owner's browser; built preview not re-checked |
+| Dependencies | rasterio, numpy and four transitive packages: permissive licences, zero PyPI advisories; `@types/geojson` declared without changing the resolved version | Advisory snapshot, not a security audit |
+| Secret scan | Before each commit, the workspace database password was checked against the diff: zero matches. No FIRMS key exists in this workspace | The Mac's `.env` was never read |
+
+Evidence gaps that keep P03 in **review**, not done: (1) no person has reviewed an adjacent industrial/agricultural hard case; the Jamnagar power-plant group is the only candidate; (2) `make install`, migrations 0003–0005, `fetch-osm`, `extract-landcover` and the browser flow have not run on the owner's Mac (rasterio needs macOS 14+ there); (3) the built production preview was not re-checked after P03.

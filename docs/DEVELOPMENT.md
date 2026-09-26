@@ -36,6 +36,9 @@ Open http://127.0.0.1:5173. The Vite development proxy forwards `/api` and `/hea
 | `GET /api/v1/status` | Observation stage, manual CLI ingestion, classifier unimplemented; use the bounded query for actual counts |
 | `GET /api/v1/catalog` | Available pilot regions and actual stored coverage for mode/product |
 | `GET /api/v1/observations` | Bounded GeoJSON page with source receipts, latest acquisition and matching ingestion attempt |
+| `GET /api/v1/observations/{id}/context` | P03: approximate pixel area, mapped OSM candidates with distances, snapshot timing, dated land cover, event and site |
+| `GET /api/v1/map/facilities.geojson` | P03: mapped OSM features in a bbox (≤ 5° per axis, capped at 2000, truncation declared) with snapshot attribution |
+| `GET /api/v1/events`, `GET /api/v1/events/{id}` | P03: events from the latest `event-site-v1` run, with members, site recurrence and lineage |
 
 There is no prediction endpoint. The UI offers saved historical replay and manually fetched NASA data. Reload refreshes the database view; it does not call NASA. `LIVE` configuration does not create scheduled polling.
 
@@ -61,6 +64,25 @@ That file is deliberately absent from Git. Another machine must fetch a real sam
 
 Bad rows are quarantined individually; a completely wrong feed schema fails. Identical observations do not grow the table when imported repeatedly. Changed measurements with the same identity are quarantined as `SOURCE_REVISION_CONFLICT`, awaiting an explicit future revision-review workflow. Scheduled polling, background retry jobs and automatic recovery of interrupted RUNNING attempts are not part of P02.
 
+## Context, land cover and events (P03)
+
+After observations exist, from the repository root:
+
+```sh
+make migrate
+make context ARGS="fetch-osm --region jamnagar"
+make context ARGS="extract-landcover --region jamnagar --data-mode HISTORICAL_REPLAY"
+make context ARGS="build-events --region jamnagar --data-mode HISTORICAL_REPLAY"
+```
+
+`fetch-osm` sends the fixed regional query to the main Overpass server and falls back to the allowed mirror when it is busy. To import a saved response instead, pass its hash and original retrieval time from the `.meta.json` sidecar:
+
+```sh
+make context ARGS="import-osm --region jamnagar --file local/context-fetch/jamnagar-osm-20260926T224053Z.json --sha256 f2a94cfd47f3f2e3068afde6bf1faa1cfb632cfc1bb2d9b748d5a8303fe9c2a7 --retrieved-at 2026-09-26T22:41:00+00:00"
+```
+
+Repeat for `singrauli` and `punjab` (hashes in `COVERAGE_INVENTORY.md`). Re-importing the same bytes reuses the snapshot. `extract-landcover` reads only small windows from the public WorldCover tiles and skips observations already summarized unless `--force` is given. `build-events` returns `UNCHANGED` when the input set is unchanged; `--force` rebuilds and records lineage. None of these commands classify anything.
+
 ## Database checks and lifecycle
 
 `make integration` creates a uniquely named `thermoscope_test_<uuid>` database on the configured loopback PostgreSQL server, applies the migration, checks geography and constraints, rolls it back/reapplies it, then drops only that test database. The configured development database is never rolled back or dropped. Test credentials therefore need local database-creation and PostGIS-extension permission; these are development privileges, not the planned production API role.
@@ -69,10 +91,10 @@ The initial migration creates the provenance ledger. Schema changes use Alembic.
 
 `make db-stop` stops the project's database and retains its named volume. Use Ctrl+C to stop the two development servers. Do not run `docker compose down -v` casually: that deletes the development data volume.
 
-The pinned PostGIS image provides amd64 only. Docker Desktop runs it under emulation on this arm64 Mac; local timings are not deployment benchmarks. Raster support is not enabled in P01. MapLibre/WebGL is checked in P02; GDAL/raster nodata checks remain for the raster milestone.
+The pinned PostGIS image provides amd64 only. Docker Desktop runs it under emulation on this arm64 Mac; local timings are not deployment benchmarks. PostGIS raster support is not enabled; P03 reads WorldCover with rasterio in the application instead (ADR-016), with nodata tests. MapLibre/WebGL is checked in P02 and P03.
 
 ## Reproducibility and CI
 
 `make install` uses `uv sync --frozen` and `npm ci`; it does not choose new versions. `make check` runs lint, format validation, contract/API tests, TypeScript checks and a production frontend build. `make integration` additionally requires PostgreSQL. The GitHub Actions workflow uses the same commands on Ubuntu with an isolated database and no project credentials.
 
-Dependency updates need an explicit lockfile diff and affected checks. Use `bash scripts/run.sh uv ...` or the Make targets so the project-local runtime and caches are selected consistently. MapLibre is installed in P02. Training libraries and the raster stack remain uninstalled until needed.
+Dependency updates need an explicit lockfile diff and affected checks. Use `bash scripts/run.sh uv ...` or the Make targets so the project-local runtime and caches are selected consistently. MapLibre is installed in P02; rasterio and numpy in P03. Training libraries remain uninstalled until needed.
