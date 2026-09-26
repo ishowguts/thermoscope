@@ -37,3 +37,7 @@ dev-web:
 .PHONY: ingest
 ingest:
 	PYTHONPATH=backend $(UV) run --frozen python -m thermoscope.ingest $(ARGS)
+
+.PHONY: context
+context:
+	PYTHONPATH=backend $(UV) run --frozen python -m thermoscope.context_cli $(ARGS)

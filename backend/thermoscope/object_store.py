@@ -32,9 +32,9 @@ class ObjectStore:
             if temp_path:
                 temp_path.unlink(missing_ok=True)
 
-    def save_raw(self, payload: bytes) -> str:
+    def save_raw(self, payload: bytes, suffix: str = "csv") -> str:
         content_hash = hashlib.sha256(payload).hexdigest()
-        self.put_once(f"raw/{content_hash}.csv", payload)
+        self.put_once(f"raw/{content_hash}.{suffix}", payload)
         return content_hash
 
     def save_manifest(self, run_id: str, manifest: dict):

@@ -3,13 +3,14 @@ from datetime import date
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
 from thermoscope.config import DataMode, Settings
+from thermoscope.context import facilities_geojson, observation_context
 from thermoscope.database import check_readiness
 from thermoscope.observations import catalog, list_observations, query_params
 from thermoscope.regions import Bounds, Product
@@ -75,7 +76,7 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
     @app.get("/api/v1/status")
     def status():
         return {
-            "stage": "OBSERVATIONS",
+            "stage": "OBSERVATIONS_WITH_CONTEXT",
             "data_mode": config.app_data_mode.value,
             "ingestion_status": "MANUAL_CLI",
             "classifier_status": "NOT_IMPLEMENTED",
@@ -121,6 +122,43 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
             return list_observations(
                 config, bounds, start_date, end_date, data_mode, product, limit, offset
             )
+        except (SQLAlchemyError, ValueError):
+            return error_response(
+                request, "DATA_UNAVAILABLE", "The stored-data service is not ready."
+            )
+
+    @app.get("/api/v1/observations/{observation_id}/context")
+    def context(
+        request: Request,
+        observation_id: Annotated[str, Path(pattern="^[0-9a-f]{64}$")],
+        data_mode: DataMode = config.app_data_mode,
+    ):
+        try:
+            result = observation_context(config, observation_id, data_mode)
+        except (SQLAlchemyError, ValueError):
+            return error_response(
+                request, "DATA_UNAVAILABLE", "The stored-data service is not ready."
+            )
+        if result is None:
+            return error_response(
+                request, "NOT_FOUND", "No observation with that ID exists in this data mode.", 404
+            )
+        return result
+
+    @app.get("/api/v1/map/facilities.geojson")
+    def facilities(
+        request: Request,
+        bbox: Annotated[str, Query(max_length=120)],
+        data_mode: DataMode = config.app_data_mode,
+    ):
+        try:
+            bounds = Bounds.parse(bbox)
+        except ValueError:
+            return error_response(
+                request, "INVALID_QUERY", "Use bounds up to 5 degrees per axis.", 422
+            )
+        try:
+            return facilities_geojson(config, bounds, data_mode)
         except (SQLAlchemyError, ValueError):
             return error_response(
                 request, "DATA_UNAVAILABLE", "The stored-data service is not ready."
