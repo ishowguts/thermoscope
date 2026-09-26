@@ -1,0 +1,21 @@
+name: thermoscope
+services:
+  db:
+    image: postgis/postgis:18-3.6@sha256:60f6ad1d21ea86a67d47780b9a0d1e1d200500f62b19293fa834d0dea80b8677
+    platform: linux/amd64
+    environment:
+      POSTGRES_USER: thermoscope
+      POSTGRES_DB: thermoscope_dev
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run make configure first}
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thermoscope -d thermoscope_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    stop_grace_period: 30s
+volumes:
+  pgdata:

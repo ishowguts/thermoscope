@@ -1,6 +1,6 @@
 # Environment and version baseline
 
-Checked 25 September 2026. **These are release candidates for our environment, not prerelease software and not an installed/tested combination.** P01 resolves peer/native compatibility, records exact versions and hashes, and creates lockfiles. Recheck security notices and maintenance status then; do not silently substitute prereleases or `latest` container tags.
+Candidate research dated 25 September 2026; P01 verification dated 26 September. **The installed P01 subset below is tested and frozen. Remaining map, raster and ML entries are candidates, not an installed/tested combination.** Do not silently substitute prereleases or `latest` tags.
 
 ## Runtime choices
 
@@ -49,7 +49,7 @@ SQLAlchemy 2.1.1 appeared in the registry on the audit day; use the maintained 2
 
 ## Required compatibility evidence
 
-1. Record OS/architecture and choose Linux deployment architecture. The user's Mac hardware was not verified; cloud is the primary plan.
+1. Record OS/architecture and choose Linux deployment architecture. P01 verified macOS arm64; RAM was not measured. Cloud is the primary deployment plan.
 2. Resolve backend dependencies into `uv.lock`; exact frontend dependencies into `package-lock.json`. Commit both when they exist. Use frozen installs in CI.
 3. Pin runtime files and container digests. Record GDAL/PROJ/GEOS versions; test CRS transforms, raster nodata and a real PostGIS query.
 4. Run migration against disposable PostGIS, parser tests, API contract checks and UI typecheck/build. Exercise MapLibre in a browser; a build alone does not test WebGL.
@@ -57,3 +57,16 @@ SQLAlchemy 2.1.1 appeared in the registry on the audit day; use the maintained 2
 6. Before P06, freeze the model revision, preprocessing, HLS collection, optional ML environment and hardware. Check missing imagery and CPU fallback separately.
 
 The acceptance record must distinguish version lookup, successful installation, tested functionality and operational readiness. None are interchangeable.
+
+## P01 verified environment — 26 September 2026
+
+- macOS arm64, isolated Python **3.13.15**, uv **0.12.19**, Node **24.21.0**, bundled npm **11.19.0**. System runtimes were preserved.
+- Docker server **29.7.2**, Compose **5.5.0**. Digest-pinned `postgis/postgis:18-3.6` runs linux/amd64 under emulation.
+- Database query: PostgreSQL **18.6**, PostGIS **3.6.4**, runtime GEOS **3.14.1**, runtime PROJ **9.8.1** with network disabled. PostGIS reports compile-time GEOS 3.13.1 / PROJ 9.6.0. Distance and migration checks passed with the installed pair.
+- `postgis_raster` is not enabled; `PostGIS_GDAL_Version()` is consequently unavailable. No raster, nodata or MapLibre/WebGL capability is certified by P01.
+- `uv.lock` freezes API/test dependencies. Additional resolved direct packages: uvicorn **0.54.0**, pydantic-settings **2.15.0**, test transport httpx2 **2.13.1** (ADR-010). Starlette **1.7.0** is the resolved FastAPI dependency.
+- `frontend/package-lock.json` freezes React/ReactDOM **19.3.0**, matching type packages, TypeScript **7.0.2**, Vite **8.3.1** and transitives. Vite's built-in TSX transform is sufficient here; no extra React transform plugin is required for this foundation.
+- Fresh separate Python environment and `npm ci` passed, followed by contract/API tests and frontend typecheck/build. The real disposable PostGIS migration/rollback/reapply test passed.
+- npm audit reported zero known vulnerabilities. PyPI version metadata was checked for known advisories; this is a dependency metadata check, not a full security audit. Package metadata is saved locally. Final validation details are in `docs/EVIDENCE.md`.
+
+GitHub Actions revisions are pinned to official v6 commit SHAs verified through the GitHub API. Cloud containerization, production permissions, backup/restore and the optional ML environment remain future gates.

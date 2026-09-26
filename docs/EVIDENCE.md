@@ -22,7 +22,7 @@ This ledger records completed verification, not planned checks. Large audit down
 
 ## Not yet performed
 
-Fresh application installation, backend/frontend tests, PostGIS migration tests, Earthdata credential acceptance, application ingestion, model training/evaluation, deployed browser tests, offline application replay, cloud restore or SIH submission. Do not cite this planning ledger as proof of those capabilities.
+Programmatic Earthdata download, application FIRMS ingestion, model training/evaluation, deployed browser tests, offline application replay, cloud restore and SIH submission remain unperformed. P01 local installation, tests, migration and browser evidence are recorded below.
 
 ## FIRMS access check — 26 September 2026
 
@@ -32,8 +32,28 @@ Fresh application installation, backend/frontend tests, PostGIS migration tests,
 - Request: NASA FIRMS Area CSV, `VIIRS_NOAA20_NRT`, bounds west 69.5 / south 22 / east 70.5 / north 23, latest UTC day, day range 1. Redirects disabled; response and timeout bounded; errors sanitized.
 - Result: HTTP 200, expected VIIRS fields present, 122 response bytes, zero observation rows. Empty data does not prove the region had no fires or establish scientific coverage.
 - Local evidence: `local/access-checks/firms-access-result.json` and `local/access-checks/firms-noaa20-access-sample-20260926T103645Z.csv`, both ignored. CSV SHA-256: `2b11a44667d05367ecf77651b95fd3d34c545c7ec154856094b91245e41ae697`.
-- Conclusion: FIRMS endpoint access is ready. A populated sample, historical availability, application parsing/storage and inference still require their own checks. Earthdata has not been tested.
+- Conclusion: FIRMS endpoint access is ready. A populated sample, historical availability, application parsing/storage and inference still require their own checks. Earthdata programmatic download has not been tested; the user subsequently confirmed web login.
 
 ## Record format for future checks
 
 Include timestamp/timezone, task, source commit, environment/lock versions, exact command or interaction, exit/result, important output counts and artifact URI/hash. Record failures and blocked checks alongside passes. Remove secret-bearing request URLs before storing evidence. A model score additionally needs data/split/model manifests and per-class support.
+
+## P01 local verification — 26 September 2026
+
+Base commit `84fb66f7622a5a2c6479c6f6b26c404f6f71d752`; implementation changes initially uncommitted during these checks. The final implementation is the commit containing this ledger update. Host macOS arm64; exact versions in `ENVIRONMENT.md`.
+
+| Check / command | Result | Boundary |
+|---|---|---|
+| Isolated Python/Node/uv install | Python 3.13.15, Node 24.21.0, uv 0.12.19; Node tarball SHA-256 matched official release checksum | Project-local tools; system tools preserved |
+| `make configure` | Local random DB credential generated; existing FIRMS setting preserved; `.env` mode 0600 | No credential values logged |
+| `make db-up`, `make migrate`, `make doctor` | Loopback DB healthy, expected migration; API readiness can connect to PostGIS | Local Compose only; no cloud provisioning |
+| `make check` | Lint/format, 21 contract/API tests, TypeScript check and Vite build passed | No map, model or provider parser tested yet |
+| `make integration` | One real PostGIS scenario passed: pre-migration 503, upgrade 200, duplicate/hash/mode constraints, downgrade 503, reapply 200; equatorial one-degree geography distance within 1 m of 111319.49 m | Random test-owned DB created and removed; development volume retained |
+| Fresh frozen install | `UV_PROJECT_ENVIRONMENT=local/verification-venv make install` and `... make check` passed | Separate new Python environment and npm clean install; not a production image |
+| Browser at `127.0.0.1:5173` | Rendered page inspected; connected/ready, replay/no-data and classifier-not-built states visible; stop DB -> needs attention; restart -> ready | Local browser check, not production deployment or MapLibre validation |
+| Three bounded NASA requests at 11:36 UTC | HTTP 200, 10/1/2 rows in Jamnagar/Singrauli/Punjab; expected schema and bounds checked | Saved real samples, not application ingestion; inventory and hashes in COVERAGE_INVENTORY.md |
+| npm dependency check | Zero known vulnerabilities reported during frozen install | Advisory snapshot; no claim of complete security |
+
+Corrections made during verification: initial Make command lookup selected system tools; the explicit shell wrapper now selects the pinned local tools. TypeScript 7 required Vite's CSS module declarations. Alembic's path separator is explicit. Starlette's deprecated test HTTP client was replaced with its documented stable httpx2 client, and the suite passed without those deprecation warnings. The GDAL query failed because raster support is not enabled; raster validation remains pending. npm reported an unapproved optional fsevents install script on macOS; it was not approved, and installation/build succeeded with that restriction.
+
+GitHub Actions is configured to use the same frozen install and check commands on Ubuntu with the digest-pinned PostGIS service. Remote run evidence is recorded separately after push; a workflow file alone is not a passed CI run.

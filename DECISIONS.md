@@ -28,3 +28,11 @@ One integrator merges by default; other contributors take bounded tasks. Task co
 
 ## ADR-009 — Submit an accurate proposal promptly
 Use the 2026 template and current portal rules. The complete research system will take longer than the submission window. Clearly distinguish implemented evidence and proposed work; preserve final submitted artifacts and receipt. A supporting video is recommended if permitted, with no guarantee of selection.
+
+## ADR-010 — P01 resolved environment (26 September 2026)
+Python 3.13.15 / uv 0.12.19 and Node 24.21.0 / bundled npm 11.19.0 are isolated locally. Exact manifests and lockfiles are committed. PostGIS image 18-3.6 is pinned by digest; actual PostgreSQL 18.6 and PostGIS 3.6.4 were queried. The image only provides amd64, so this arm64 Mac uses Docker emulation; select native amd64 for the matching cloud pilot. Local timings are not performance evidence.
+
+Starlette 1.7.0 deprecated its old `httpx` test-client path. Use stable `httpx2` 2.13.1 for test transport, as recommended by the [official TestClient documentation](https://www.starlette.io/testclient/), and verify the same tests. This replaces the P01 test dependency; a production provider client remains a P02 decision. Optional maps/ML/raster packages remain uninstalled until needed.
+
+## ADR-011 — Host processes for the development foundation
+P01 Compose runs only PostgreSQL/PostGIS; API and Vite run as loopback host processes with frozen environments. This keeps first-run development small and inspectable. Containerized API/worker deployment remains a later deployment deliverable, not an implied P01 capability. Database test creation/drop is restricted to a uniquely named test-owned database on loopback. No development data-volume rollback is performed.

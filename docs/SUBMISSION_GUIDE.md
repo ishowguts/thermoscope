@@ -8,7 +8,7 @@ The [2026 guidelines](https://sih.gov.in/letters/2026/SIH%202026%20Guidelines.pd
 
 Use the [official presentation template](https://sih.gov.in/letters/2026/SIH2026-IDEA-Presentation-Format.pptx): retain the six content positions and their headings, remove its final instruction page, and submit a PDF. The instruction page limits the presentation to six slides including the title. Signed-in portal limits, optional links and editing after submission are still unverified.
 
-Team leader access is available according to the user. Verify Team ID, exact registered team name and nomination status in the portal before generating the final cover. Do not put credentials in this repository.
+Team leader access is available according to the user. Team ID 144613, registered name Git_Push_Pray, leader Bittu Mandal and college INDIAN INSTITUTE OF INFORMATION TECHNOLOGY, PUNE are confirmed in `SUBMISSION_DETAILS.md`. Verify nomination status and portal limits before final packaging. Do not put credentials in this repository.
 
 ## Six-slide narrative
 
@@ -16,7 +16,7 @@ The copy below describes the **proposed fresh system**. Change wording to implem
 
 ### 1. Title page
 
-Use SMART INDIA HACKATHON 2026 and the current official artwork. Enter the exact PS title and ID SIH26162, NTRO, Software and Disaster Management. Idea name: **ThermoScope — Industrial Thermal Intelligence**. Fill the real Team ID and registered name; the submitted deck currently shows Git push pray, which still needs portal confirmation.
+Use SMART INDIA HACKATHON 2026 and the current official artwork. Enter the exact PS title and ID SIH26162, NTRO, Software and Disaster Management. Idea name: **ThermoScope — Industrial Thermal Intelligence**. Use Team ID **144613** and exact registered name **Git_Push_Pray**. The old deck’s “Git push pray” wording must be corrected.
 
 Suggested one-line pitch: **Distinguish recurring industrial heat from unusual thermal activity, with a map, history and evidence for every assessment.**
 

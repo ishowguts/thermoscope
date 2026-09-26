@@ -4,7 +4,7 @@ Evidence-based analysis of industrial thermal sources for SIH 2026 problem state
 
 ThermoScope is designed to combine NASA FIRMS observations, industrial infrastructure, land cover and site history in a GIS workbench. The intended workflow separates likely source, unusual behaviour and analyst review priority, with evidence and uncertainty visible for each assessment.
 
-**Status:** fresh rebuild specification. This repository does not yet contain a running application, trained model, benchmark results or deployment. Implementation starts with P01; the earlier college demonstration is a separate project.
+**Status:** P01 foundation implemented: runnable API, PostGIS provenance migration, typed source/time contracts, locked dependencies and a development status screen. Real FIRMS samples are saved for the next milestone. Application ingestion, map, classifier, model evaluation and deployment are not implemented yet; the earlier college demonstration is a separate project.
 
 ## Read first
 
@@ -13,12 +13,14 @@ ThermoScope is designed to combine NASA FIRMS observations, industrial infrastru
 | [Decision brief](docs/00-BRIEFING.md) | Plain-language recommendation, scope, roles, time and submission priorities |
 | [Architecture](docs/ARCHITECTURE.md) | Data contracts, classification, GIS, evaluation and operating design |
 | [Eight milestones](docs/BUILD_PLAN.md) | Build sequence and acceptance gates |
+| [Local development](docs/DEVELOPMENT.md) | Reproducible setup, checks, endpoints and database lifecycle |
+| [Team update](docs/TEAM_UPDATE.md) | What changed, what is built before submission and how the model will be trained |
 | [Access setup](docs/ACCESS_SETUP.md) | FIRMS, Earthdata and other prerequisites |
 | [Submission guide](docs/SUBMISSION_GUIDE.md) | Six-slide revision and demo-video outline |
 | [Audit](docs/AUDIT.md) | What the earlier code and presentation actually contain |
 | [Research](docs/RESEARCH.md) | Primary sources and technology decisions |
 
-For implementation sessions, read the contributor guide, the work contract and [current state](PROJECT_STATE.md). Candidate versions are recorded in [ENVIRONMENT.md](ENVIRONMENT.md); installation and compatibility checks are still pending.
+For implementation sessions, read the contributor guide, the work contract and [current state](PROJECT_STATE.md). Verified P01 versions and remaining candidates are recorded in [ENVIRONMENT.md](ENVIRONMENT.md). See [evidence](docs/EVIDENCE.md) for the checks actually performed.
 
 ## What success means
 

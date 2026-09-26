@@ -1,0 +1,44 @@
+:root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #183b37; background: #f6f7f4; font-synthesis: none; line-height: 1.5; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, a { -webkit-tap-highlight-color: transparent; }
+.shell { display: flex; min-height: 100vh; }
+.rail { width: 244px; flex-shrink: 0; background: #103d39; color: #d8e5de; padding: 34px 24px; display: flex; flex-direction: column; }
+.brand { color: #fff; text-decoration: none; font-weight: 650; font-size: 21px; letter-spacing: -.7px; display: flex; align-items: center; gap: 10px; }
+.mark { background: #c4f28c; color: #153b37; height: 30px; width: 30px; border-radius: 9px; display: grid; place-items: center; font-size: 19px; }
+.rail-section { font-size: 10px; letter-spacing: 1.8px; color: #a8c2b6; margin: 55px 10px 14px; }
+.selected { background: #27504a; padding: 12px 14px; border-radius: 8px; font-size: 14px; color: #fff; }
+.selected span { margin-right: 11px; color: #c4f28c; }
+.rail-note { margin: 26px 10px; font-size: 12px; line-height: 1.8; color: #b2c9bf; }
+.rail-bottom { margin-top: auto; font-size: 13px; padding-top: 80px; }
+.rail-bottom small { display: block; color: #b2c9bf; margin: 8px 0 0 13px; font-size: 11px; }
+.dot { display: inline-block; width: 6px; height: 6px; background: #c4f28c; border-radius: 50%; margin-right: 5px; }
+main { width: min(1120px, 100%); padding: 35px 48px 28px; margin: 0 auto; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 10px; letter-spacing: 1.5px; color: #526963; }
+.tag { letter-spacing: .1px; border: 1px solid #c9d4cd; border-radius: 30px; padding: 5px 11px; font-size: 11px; white-space: nowrap; }
+.intro { margin: 61px 0 31px; }
+.eyebrow { font-size: 10px; letter-spacing: 1.6px; font-weight: 700; color: #547467; }
+h1 { font-size: clamp(28px, 3.2vw, 43px); font-weight: 580; line-height: 1.15; letter-spacing: -1.6px; margin: 13px 0 17px; }
+.intro p { max-width: 570px; font-size: 15px; color: #61746d; margin: 0; }
+.mode-banner { display: flex; align-items: center; gap: 15px; padding: 20px 22px; background: #e9eee4; border: 1px solid #d6dfce; border-radius: 10px; }
+.mode-symbol { font-size: 26px; }
+.mode-banner strong { font-size: 13px; font-weight: 650; }
+.mode-banner p { font-size: 12px; margin: 4px 0 0; color: #566851; }
+.status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 25px; }
+.card { background: #fff; border: 1px solid #dfe4de; border-radius: 10px; padding: 24px 22px; }
+.card-title { color: #6a7c73; font-size: 12px; }
+h2 { font-size: 22px; letter-spacing: -.55px; font-weight: 580; margin: 16px 0 9px; }
+.card p { font-size: 12px; color: #64766c; line-height: 1.7; margin: 0; }
+.next-panel { display: flex; gap: 22px; margin-top: 34px; padding: 28px 0; border-top: 1px solid #dce2db; border-bottom: 1px solid #dce2db; }
+.step-number { font-size: 27px; color: #819787; line-height: 1; padding-top: 3px; letter-spacing: -1px; }
+.next-panel h2 { font-size: 21px; margin: 7px 0 9px; }
+.next-panel p { font-size: 13px; color: #64766c; max-width: 600px; margin: 0; }
+footer { display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-top: 23px; }
+footer p { font-size: 11px; color: #6b7c72; }
+button { background: #fff; color: #214a3e; border: 1px solid #c7d1c7; padding: 10px 15px; border-radius: 7px; cursor: pointer; font: inherit; font-size: 12px; }
+button span { margin-left: 15px; }
+button:hover { background: #e8efe4; }
+button:focus-visible, a:focus-visible { outline: 3px solid #859f3f; outline-offset: 4px; }
+button:disabled { cursor: wait; opacity: .65; }
+@media (max-width: 1000px) { .rail { width: 200px; padding: 30px 18px; } main { padding: 30px; } .status-grid { gap: 10px; } .card { padding: 20px 15px; } h2 { font-size: 19px; } }
+@media (max-width: 760px) { .shell { display: block; } .rail { width: 100%; padding: 18px 24px; } .rail-section, .selected, .rail-note, .rail-bottom { display: none; } main { padding: 25px 22px; } header { font-size: 8px; letter-spacing: .6px; } .tag { font-size: 10px; } .intro { margin-top: 35px; } .status-grid { grid-template-columns: 1fr; } .card { padding: 20px; } .card h2 { margin-top: 8px; } footer { align-items: flex-start; } footer p { max-width: 160px; } }
