@@ -1,0 +1,46 @@
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.netrc
+secrets/
+
+# Environments, dependencies and generated files
+.venv/
+venv/
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage/
+htmlcov/
+dist/
+build/
+test-results/
+playwright-report/
+*.log
+.DS_Store
+
+# Provider data, model weights and local artifacts
+data/raw/
+data/cache/
+data/processed/
+artifacts/
+models/weights/
+local/
+*.duckdb
+*.sqlite
+*.sqlite3
+*.tif
+*.tiff
+*.parquet
+*.pt
+*.pth
+*.safetensors
+
+# Commit lockfiles and small reviewed synthetic fixtures deliberately.
