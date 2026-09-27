@@ -58,13 +58,6 @@ trap finish EXIT
 trap 'exit 130' INT TERM
 log() { printf '%s\n' "$*" | tee -a "$RAW"; }
 short() { case "$1" in "$HOME"*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac; }
-# macOS strips DYLD_* variables when a protected program (bash, env) starts, so the fallback is
-# passed as TS_OMP_FALLBACK and exported by the shell that directly starts uv and Python.
-with_fallback() {
-    TS_OMP_FALLBACK="$1" bash scripts/run.sh bash -c \
-        'export DYLD_FALLBACK_LIBRARY_PATH="$TS_OMP_FALLBACK:/usr/local/lib:/usr/lib"; exec "$@"' \
-        with-fallback "${@:2}"
-}
 run() { # run <label> <command...>: output to the report, PASS/FAIL line
     local label="$1"; shift
     log ""; log "== $label"
@@ -136,34 +129,16 @@ for order in xgboost-alone sklearn-first; do
         XGB_OK=yes
     fi
 done
-FALLBACK=""
-if [ "$XGB_OK" = no ]; then
-    for dir in "${BREW%/bin/brew}/opt/libomp/lib" "$(dirname "$SKOMP" 2>/dev/null)"; do
-        [ -n "$dir" ] && [ -f "$dir/libomp.dylib" ] || continue
-        if run "xgboost probe with OpenMP from $(short "$dir")" \
-            with_fallback "$dir" uv run --frozen python -c "$PROBE" xgboost-alone; then
-            FALLBACK="$dir"; break
-        fi
-    done
-fi
-
 run "make check" make check
 if [ -f .env ]; then
     run "make integration (disposable databases)" make integration
-    if [ "$XGB_OK" = no ] && [ -n "$FALLBACK" ]; then
-        model_tests() {
-            export THERMOSCOPE_RUN_DB_TESTS=1
-            with_fallback "$FALLBACK" uv run --frozen pytest -q backend/tests/test_ml.py \
-                backend/tests/test_p05_db.py
-        }
-        run "model tests with OpenMP from $(short "$FALLBACK")" model_tests
-    fi
 fi
 
 log ""; log "== Summary"
 grep -E '^-- ' "$RAW" > "$RAW.summary"
 tee -a "$RAW" < "$RAW.summary"; rm -f "$RAW.summary"
-log "xgboost loads with the project's settings: $XGB_OK${FALLBACK:+; loads with OpenMP from $(short "$FALLBACK")}"
+log "xgboost loads with the project's settings: $XGB_OK"
+[ "$XGB_OK" = yes ] || log "XGBoost needs Homebrew's OpenMP runtime at /opt/homebrew/opt/libomp: run 'brew install libomp'."
 
 finish
 trap - EXIT
