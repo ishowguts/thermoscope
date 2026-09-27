@@ -28,7 +28,10 @@ from thermoscope.object_store import ObjectStore
 from thermoscope.regions import NOAA20_FAMILY, REGIONS
 
 CASE_VERSION = "case-v1"
-FEATURE_VERSION = "case-features-v3"  # v3: days_since_last censored at 90 days
+# v3: days_since_last censored at 90 days. v4: the same computation after the NOAA-20 SP archive
+# backfill from 30 December 2025 (ADR-022): every case away from a region edge now has a retrieved
+# 90-day history window.
+FEATURE_VERSION = "case-features-v4"
 LABEL_POLICY = "label-resolution-v1"
 SPLIT_SEED = "thermoscope-p05-split-v1"
 SPLIT_FRACTIONS = {"TRAIN": 0.6, "VALIDATION": 0.2, "TEST": 0.2}

@@ -66,8 +66,9 @@ EPISODE = [
     "bt_i4_median", "bt_i5_median", "bt_diff_median", "night_fraction", "high_conf_fraction",
     "low_conf_fraction", "scan_median", "track_median",
 ]  # fmt: skip
-# Stored for audit but not model inputs: the archive starts on 30 March 2026, so retrieved-day
-# coverage and 180-day counts rise with the episode date and would act as a date (season) proxy.
+# Stored for audit but not model inputs: the archive starts on 30 December 2025 (30 March 2026
+# before the backfill), so 180-day coverage and counts still rise with the episode date and would
+# act as a date (season) proxy.
 HISTORY_STORED_ONLY = ["active_days_180", "coverage_90", "coverage_180"]
 HISTORY = [
     "active_days_30", "active_days_90", "overpasses_90", "days_since_last",
