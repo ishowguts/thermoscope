@@ -592,7 +592,8 @@ def load_inputs(conn, observation_id: str, mode: DataMode, as_of: datetime | Non
                 WHERE x.observation_id=o.id AND r.data_mode='LIVE'
                 AND r.status IN ('SUCCEEDED','PARTIAL')) AS available_at
         FROM observations o
-        WHERE ST_DWithin(o.geom::geography,ST_SetSRID(ST_Point(:lon,:lat),4326)::geography,:r)
+        WHERE ST_DWithin(o.geom,ST_SetSRID(ST_Point(:lon,:lat),4326),:degrees)
+            AND ST_DWithin(o.geom::geography,ST_SetSRID(ST_Point(:lon,:lat),4326)::geography,:r)
             AND o.product = ANY(:family)
             AND o.acquired_at > :earliest
             AND EXISTS (SELECT 1 FROM observation_receipts x JOIN ingestion_runs r
@@ -603,6 +604,10 @@ def load_inputs(conn, observation_id: str, mode: DataMode, as_of: datetime | Non
         point
         | {
             "r": SITE_RADIUS_M,
+            # Indexed planar pre-filter that always contains the geodesic circle.
+            "degrees": SITE_RADIUS_M
+            / (111_000.0 * math.cos(math.radians(min(abs(obs["lat"]), 85.0))))
+            * 1.1,
             "mode": mode.value,
             "family": list(family),
             "earliest": as_of - timedelta(days=max(WINDOWS) + 2),
