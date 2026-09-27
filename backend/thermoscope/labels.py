@@ -14,7 +14,8 @@ import io
 import json
 import re
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
+from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
@@ -27,13 +28,35 @@ from thermoscope.object_store import ObjectStore
 from thermoscope.regions import NOAA20_FAMILY, REGIONS
 
 CASE_VERSION = "case-v1"
-FEATURE_VERSION = "case-features-v1"
+FEATURE_VERSION = "case-features-v2"
 LABEL_POLICY = "label-resolution-v1"
 SPLIT_SEED = "thermoscope-p05-split-v1"
 SPLIT_FRACTIONS = {"TRAIN": 0.6, "VALIDATION": 0.2, "TEST": 0.2}
 GROUP_MERGE_M = 2000.0
 FORWARD_CUTOFF = datetime(2026, 8, 15, tzinfo=UTC)
 REGISTRY_MATCH_M = 1500.0
+# Grouping protocols. site-2km-v1 (p05-pilot-v1) merged sites whose centres are within 2 km;
+# the reconciliation found large refineries, steel plants and mines whose cases crossed splits,
+# so facility-aware-v1 also merges sites near the same mapped facility area or registered plant.
+GROUPINGS = ("site-2km-v1", "facility-aware-v1")
+FACILITY_BUFFER_M = 500.0
+# Evidence policy for GOLD eligibility (ADR-021). Reviews label source identity only, never an
+# accident. ThermoScope's own inputs (OSM, registry, WorldCover) and the FIRMS detection itself
+# are not independent evidence; undated basemaps and news alone are not sufficient.
+EVIDENCE_POLICY = "evidence-policy-v1"
+EVIDENCE_KINDS = (
+    "DATED_IMAGERY", "OFFICIAL_OR_COMPANY", "NEWS_REPORT", "UNDATED_BASEMAP", "PROJECT_INPUT",
+    "OTHER",
+)  # fmt: skip
+INDEPENDENT_KINDS = {"DATED_IMAGERY", "OFFICIAL_OR_COMPANY"}
+IMAGERY_WINDOW_DAYS = (365, 30)  # imagery dated up to a year before to 30 days after the episode
+PROJECT_INPUT_HOSTS = (
+    "openstreetmap.org", "osm.org", "firms.modaps.eosdis.nasa.gov", "esa-worldcover.org",
+    "worldcover2021.esa.int", "wri.org", "localhost", "127.0.0.1",
+)  # fmt: skip
+PROJECT_INPUT_PATHS = ("github.com/wri/global-power-plant-database", "zenodo.org/records/7254221")
+BASEMAP_HOSTS = ("maps.google.", "earth.google.com", "maps.apple.com")
+BASEMAP_PATH_HOSTS = ("google.", "bing.com")  # only their /maps pages are basemaps
 SOURCE_LABELS = ("INDUSTRIAL", "VEGETATION_FIRE", "AGRICULTURAL_BURN", "OTHER", "UNRESOLVED")
 SUBTYPES = ("GAS_FLARE", "OTHER_PERSISTENT_HEAT", "MINING_HEAT", "UNRESOLVED")
 GPPD = {
@@ -253,9 +276,61 @@ def review_order(cases: list[dict]) -> list[str]:
     return order
 
 
-def build_case_set(settings: Settings, name: str, mode: DataMode) -> dict:
+class CaseSetSuperseded(ValueError):
+    pass
+
+
+def facility_pairs(conn, runs: list, provider: str) -> list[tuple[str, str]]:
+    """Sites near the same mapped facility area (any OSM area in the region's newest snapshot)
+    or within the registry radius of the same registered plant belong to one group."""
+    rows = conn.execute(
+        text("""
+        WITH snap AS (SELECT DISTINCT ON (region_id) id,region_id FROM facility_snapshots
+                      WHERE provider=:provider ORDER BY region_id,osm_base_at DESC,id)
+        SELECT 'osm:'||f.osm_type||'/'||f.osm_id AS facility,s.id AS site
+        FROM facilities f JOIN snap ON snap.id=f.snapshot_id
+        JOIN event_runs r ON r.region_id=snap.region_id AND r.id = ANY(:runs)
+        JOIN sites s ON s.run_id=r.id
+        WHERE f.build <> 'POINT' AND ST_DWithin(f.geom::geography,s.geom::geography,:buffer)
+        UNION ALL
+        SELECT 'registry:'||g.source_id||'/'||g.record_id,s.id FROM registry_facilities g
+        JOIN sites s ON s.run_id = ANY(:runs)
+            AND ST_DWithin(g.geom::geography,s.geom::geography,:registry)
+    """),
+        {
+            "runs": runs,
+            "provider": provider,
+            "buffer": FACILITY_BUFFER_M,
+            "registry": REGISTRY_MATCH_M,
+        },  # fmt: skip
+    ).all()
+    members = defaultdict(set)
+    for facility, site in rows:
+        members[facility].add(site)
+    pairs = []
+    for sites in members.values():
+        ordered = sorted(sites)
+        pairs += [(ordered[0], other) for other in ordered[1:]]
+    return pairs
+
+
+def build_case_set(
+    settings: Settings,
+    name: str,
+    mode: DataMode,
+    *,
+    grouping: str = "facility-aware-v1",
+    supersedes: str | None = None,
+    reason: str | None = None,
+) -> dict:
+    from thermoscope.context import snapshot_provider
+
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{2,60}", name):
         raise IngestError("INVALID_CASE_SET_NAME")
+    if grouping not in GROUPINGS:
+        raise IngestError("UNKNOWN_GROUPING")
+    if supersedes and not (reason and 10 <= len(reason.strip()) <= 500):
+        raise IngestError("SUPERSEDING_NEEDS_A_REASON")
     runs = {}
     for region in REGIONS:
         report = build_event_run(settings, region["id"], mode)
@@ -263,6 +338,24 @@ def build_case_set(settings: Settings, name: str, mode: DataMode) -> dict:
     with batch_engine(settings) as engine, engine.begin() as conn:
         if conn.execute(text("SELECT 1 FROM case_sets WHERE name=:n"), {"n": name}).first():
             raise IngestError("CASE_SET_EXISTS")
+        previous = None
+        if supersedes:
+            previous = (
+                conn.execute(
+                    text("""SELECT s.id,s.name,s.manifest_sha256,
+                        (SELECT count(*) FROM label_reviews r WHERE r.case_set_id=s.id) AS reviews
+                        FROM case_sets s WHERE s.name=:v OR CAST(s.id AS text)=:v"""),
+                    {"v": supersedes},
+                )
+                .mappings()
+                .first()
+            )
+            if previous is None:
+                raise IngestError("UNKNOWN_CASE_SET")
+            if previous["reviews"]:
+                # Reviews describe episodes and could be carried over, but that needs its own
+                # audited step; never drop or silently re-split reviewed cases.
+                raise IngestError("SUPERSEDED_SET_HAS_REVIEWS")
         rows = (
             conn.execute(
                 text("""
@@ -295,7 +388,12 @@ def build_case_set(settings: Settings, name: str, mode: DataMode) -> dict:
         """),
             {"runs": list(runs.values()), "d": GROUP_MERGE_M},
         ).all()
-        groups = union_groups(sorted({r["site_id"] for r in rows}), [tuple(p) for p in close])
+        pairs = [tuple(p) for p in close]
+        if grouping == "facility-aware-v1":
+            pairs += facility_pairs(conn, list(runs.values()), snapshot_provider(mode))
+        known = {r["site_id"] for r in rows}
+        pairs = [p for p in pairs if p[0] in known and p[1] in known]
+        groups = union_groups(sorted(known), pairs)
         cases = [
             {
                 "id": r["id"],
@@ -325,8 +423,21 @@ def build_case_set(settings: Settings, name: str, mode: DataMode) -> dict:
             "seed": SPLIT_SEED,
             "fractions": SPLIT_FRACTIONS,
             "group_merge_m": GROUP_MERGE_M,
+            "grouping": grouping,
+            "facility_buffer_m": FACILITY_BUFFER_M if grouping == "facility-aware-v1" else None,
+            "registry_group_m": REGISTRY_MATCH_M if grouping == "facility-aware-v1" else None,
+            "supersedes": None
+            if previous is None
+            else {
+                "case_set_id": str(previous["id"]),
+                "name": previous["name"],
+                "manifest_sha256": previous["manifest_sha256"],
+                "reason": reason.strip(),
+            },
             "protocols": {
                 "UNSEEN_SITE": "site-group-disjoint TRAIN / VALIDATION / TEST within each region",
+                "HELD_OUT_REGION": "leave one region out: train on TRAIN cases of the other "
+                "regions, test on the held-out region's TEST cases",
                 "KNOWN_SITE_FUTURE": f"train on as_of < {FORWARD_CUTOFF.isoformat()}, test on "
                 "later cases at sites seen in training",
             },
@@ -387,6 +498,7 @@ def build_case_set(settings: Settings, name: str, mode: DataMode) -> dict:
         "name": name,
         "cases": len(cases),
         "site_groups": len(set(groups.values())),
+        "grouping": grouping,
         "splits": dict(sorted(counts.items())),
         "manifest_sha256": manifest_sha,
     }
@@ -397,11 +509,137 @@ def list_case_sets(settings: Settings) -> list[dict]:
         rows = conn.execute(
             text("""
             SELECT s.id,s.name,s.data_mode,s.case_count,s.manifest_sha256,s.created_at,
-                (SELECT count(*) FROM label_reviews r WHERE r.case_set_id=s.id) AS reviews
-            FROM case_sets s ORDER BY s.created_at DESC
+                COALESCE(s.split_policy->>'grouping','site-2km-v1') AS grouping,
+                (SELECT count(*) FROM label_reviews r WHERE r.case_set_id=s.id) AS reviews,
+                (SELECT n.name FROM case_sets n
+                 WHERE n.split_policy->'supersedes'->>'case_set_id' = CAST(s.id AS text)
+                 ORDER BY n.created_at LIMIT 1) AS superseded_by
+            FROM case_sets s ORDER BY (SELECT 1 FROM case_sets n WHERE
+                n.split_policy->'supersedes'->>'case_set_id' = CAST(s.id AS text) LIMIT 1)
+                NULLS FIRST, s.created_at DESC
         """)
         ).mappings()
         return [dict(r) | {"id": str(r["id"])} for r in rows]
+
+
+def case_set_grouping(conn, set_id) -> str:
+    return conn.execute(
+        text("SELECT COALESCE(split_policy->>'grouping','site-2km-v1') FROM case_sets "
+             "WHERE id=:s"), {"s": set_id},
+    ).scalar_one()  # fmt: skip
+
+
+def superseded_by(conn, set_id) -> str | None:
+    return conn.execute(
+        text("""SELECT name FROM case_sets
+            WHERE split_policy->'supersedes'->>'case_set_id' = CAST(:s AS text)
+            ORDER BY created_at LIMIT 1"""),
+        {"s": str(set_id)},
+    ).scalar()
+
+
+def grouping_audit(settings: Settings, set_ref: str) -> dict:
+    """Mapped facility areas and registered plants whose nearby cases fall in more than one
+    split: any hit means the set's grouping is unsafe for an unseen-site claim."""
+    from thermoscope.context import snapshot_provider
+
+    with batch_engine(settings) as engine, engine.connect() as conn:
+        set_id = case_set_id(conn, set_ref)
+        mode = conn.execute(
+            text("SELECT data_mode FROM case_sets WHERE id=:s"), {"s": set_id}
+        ).scalar_one()
+        rows = conn.execute(
+            text("""
+            WITH snap AS (SELECT DISTINCT ON (region_id) id,region_id FROM facility_snapshots
+                          WHERE provider=:provider ORDER BY region_id,osm_base_at DESC,id),
+            near AS (
+                SELECT 'osm:'||f.osm_type||'/'||f.osm_id AS facility,f.name,c.split,c.split_group
+                FROM label_cases c JOIN snap ON snap.region_id=c.region_id
+                JOIN facilities f ON f.snapshot_id=snap.id AND f.build <> 'POINT'
+                    AND ST_DWithin(f.geom::geography,c.geom::geography,:buffer)
+                WHERE c.case_set_id=:s
+                UNION ALL
+                SELECT 'registry:'||g.source_id||'/'||g.record_id,g.name,c.split,c.split_group
+                FROM label_cases c JOIN registry_facilities g
+                    ON ST_DWithin(g.geom::geography,c.geom::geography,:registry)
+                WHERE c.case_set_id=:s)
+            SELECT facility,min(name) AS name,count(*) AS cases,
+                count(DISTINCT split_group) AS groups,array_agg(DISTINCT split) AS splits
+            FROM near GROUP BY facility HAVING count(DISTINCT split) > 1
+            ORDER BY count(*) DESC,facility
+        """),
+            {
+                "s": set_id,
+                "provider": snapshot_provider(DataMode(mode)),
+                "buffer": FACILITY_BUFFER_M,
+                "registry": REGISTRY_MATCH_M,
+            },  # fmt: skip
+        ).mappings()
+        crossing = [dict(r) | {"splits": sorted(r["splits"])} for r in rows]
+    return {
+        "case_set_id": str(set_id),
+        "facility_buffer_m": FACILITY_BUFFER_M,
+        "registry_radius_m": REGISTRY_MATCH_M,
+        "facilities_crossing_splits": len(crossing),
+        "cases_near_crossing_facilities": sum(r["cases"] for r in crossing),
+        "examples": crossing[:25],
+        "safe_for_unseen_site_claims": not crossing,
+    }
+
+
+def case_set_fingerprint(settings: Settings, set_ref: str) -> dict:
+    """Stable digests for before/after comparisons of a case set and its derived rows."""
+    with batch_engine(settings) as engine, engine.connect() as conn:
+        set_id = case_set_id(conn, set_ref)
+        head = (
+            conn.execute(
+                text("""SELECT name,case_count,manifest_sha256,
+                    COALESCE(split_policy->>'grouping','site-2km-v1') AS grouping
+                    FROM case_sets WHERE id=:s"""),
+                {"s": set_id},
+            )
+            .mappings()
+            .one()
+        )
+        cases = conn.execute(
+            text("""SELECT id,split,split_group FROM label_cases WHERE case_set_id=:s
+                ORDER BY id"""),
+            {"s": set_id},
+        ).all()
+        features = conn.execute(
+            text("""SELECT feature_version,count(*),
+                string_agg(case_id||':'||sha256, ',' ORDER BY case_id),
+                count(weak_label),count(silver_label),
+                count(*) FILTER (WHERE (features->>'history_complete')::boolean)
+                FROM case_features WHERE case_set_id=:s GROUP BY feature_version
+                ORDER BY feature_version"""),
+            {"s": set_id},
+        ).all()
+        reviews = conn.execute(
+            text("SELECT count(*) FROM label_reviews WHERE case_set_id=:s"), {"s": set_id}
+        ).scalar_one()
+
+    def digest(value) -> str:
+        return hashlib.sha256(value.encode()).hexdigest()
+
+    return {
+        "case_set": dict(head) | {"id": str(set_id)},
+        "episode_ids_sha256": digest(",".join(c[0] for c in cases)),
+        "splits_sha256": digest(",".join(f"{c[0]}:{c[1]}" for c in cases)),
+        "groups": len({c[2] for c in cases}),
+        "splits": {k: sum(1 for c in cases if c[1] == k) for k in SPLIT_FRACTIONS},
+        "features": {
+            v: {
+                "rows": n,
+                "sha256": digest(rows or ""),
+                "weak_labels": w,
+                "silver_labels": sv,
+                "history_complete": h,
+            }
+            for v, n, rows, w, sv, h in features
+        },  # fmt: skip
+        "reviews": reviews,
+    }
 
 
 def case_set_id(conn, name_or_id: str) -> UUID:
@@ -417,19 +655,30 @@ def case_set_id(conn, name_or_id: str) -> UUID:
 # Label resolution
 
 
+def qualifies(review: dict) -> bool:
+    """GOLD-eligible review: evidence judged independent under the recorded policy, and the
+    reviewer was at least moderately certain. Legacy or unknown evidence formats never qualify."""
+    evidence = review.get("evidence")
+    return (
+        isinstance(evidence, dict)
+        and evidence.get("policy") == EVIDENCE_POLICY
+        and evidence.get("independent") is True
+        and review.get("certainty") in {"HIGH", "MEDIUM"}
+    )
+
+
 def resolve_label(reviews: list[dict], review_slots: int, silver: str | None, weak: str | None):
     """Deterministic tiering from blind reviews, registry corroboration and rules."""
     adjudications = [r for r in reviews if r["role"] == "ADJUDICATOR"]
     reviewers = [r for r in reviews if r["role"] == "REVIEWER"]
     if adjudications:
         a = adjudications[-1]
-        tier = "GOLD" if a["evidence"] else "SILVER"
         if a["source_label"] == "UNRESOLVED":
             return {"label": "UNRESOLVED", "tier": "UNRESOLVED", "basis": "ADJUDICATED_UNRESOLVED"}
-        return {"label": a["source_label"], "tier": tier, "basis": "ADJUDICATED"}
+        return {"label": a["source_label"], "tier": "GOLD" if qualifies(a) else "SILVER",
+                "basis": "ADJUDICATED"}  # fmt: skip
     if reviewers:
         labels = {r["source_label"] for r in reviewers}
-        cited = any(r["evidence"] for r in reviewers)
         if len(reviewers) >= 2:
             if len(labels) > 1:
                 return {"label": "UNRESOLVED", "tier": "UNRESOLVED",
@@ -437,14 +686,18 @@ def resolve_label(reviews: list[dict], review_slots: int, silver: str | None, we
             label = labels.pop()
             if label == "UNRESOLVED":
                 return {"label": "UNRESOLVED", "tier": "UNRESOLVED", "basis": "REVIEWERS_UNSURE"}
-            return {"label": label, "tier": "GOLD" if cited else "SILVER",
+            gold = any(qualifies(r) for r in reviewers) and all(
+                r.get("certainty") in {"HIGH", "MEDIUM"} for r in reviewers
+            )
+            return {"label": label, "tier": "GOLD" if gold else "SILVER",
                     "basis": "TWO_REVIEWERS_AGREE"}  # fmt: skip
         label = reviewers[0]["source_label"]
         if label == "UNRESOLVED":
             return {"label": "UNRESOLVED", "tier": "UNRESOLVED", "basis": "REVIEWER_UNSURE"}
         if review_slots >= 2:
             return {"label": label, "tier": "SILVER", "basis": "ONE_OF_TWO_REVIEWS"}
-        return {"label": label, "tier": "GOLD" if cited else "SILVER", "basis": "ONE_REVIEWER"}
+        return {"label": label, "tier": "GOLD" if qualifies(reviewers[0]) else "SILVER",
+                "basis": "ONE_REVIEWER"}  # fmt: skip
     if silver:
         return {"label": silver, "tier": "SILVER", "basis": "REGISTRY_CORROBORATED"}
     if weak and weak != "UNKNOWN":
@@ -463,8 +716,8 @@ def resolved_labels(conn, set_id) -> dict[str, dict]:
     reviews = defaultdict(list)
     for r in conn.execute(
         text("""
-        SELECT case_id,role,source_label,evidence,reviewer,reviewed_at FROM label_reviews
-        WHERE case_set_id=:s ORDER BY reviewed_at,id
+        SELECT case_id,role,source_label,certainty,evidence,reviewer,reviewed_at
+        FROM label_reviews WHERE case_set_id=:s ORDER BY reviewed_at,id
     """),
         {"s": set_id},
     ).mappings():
@@ -524,18 +777,23 @@ def review_queue(settings: Settings, set_ref: str, reviewer: str, limit: int = 2
                 text("""
             SELECT c.id,c.split,c.region_id,c.as_of,c.review_slots,c.review_rank,
                 COUNT(r.id) FILTER (WHERE r.role='REVIEWER') AS reviews,
-                BOOL_OR(lower(r.reviewer)=lower(:who)) AS mine
+                BOOL_OR(lower(r.reviewer)=lower(:who)) AS mine,
+                COALESCE(BOOL_OR((f.features->>'history_complete')::boolean), false)
+                    AS history_complete
             FROM label_cases c LEFT JOIN label_reviews r
                 ON r.case_set_id=c.case_set_id AND r.case_id=c.id
+            LEFT JOIN case_features f ON f.case_set_id=c.case_set_id AND f.case_id=c.id
+                AND f.feature_version=:v
             WHERE c.case_set_id=:s
             GROUP BY c.id,c.split,c.region_id,c.as_of,c.review_slots,c.review_rank
-            ORDER BY c.review_rank
+            ORDER BY history_complete DESC,c.review_rank
         """),
-                {"s": set_id, "who": reviewer},
+                {"s": set_id, "who": reviewer, "v": FEATURE_VERSION},
             )
             .mappings()
             .all()
         )
+        newer = superseded_by(conn, set_id)
     adjudicate, review = [], []
     for r in rows:
         if r["mine"]:
@@ -548,6 +806,7 @@ def review_queue(settings: Settings, set_ref: str, reviewer: str, limit: int = 2
             "as_of": r["as_of"],
             "reviews": r["reviews"],
             "needs": r["review_slots"],
+            "history_complete": r["history_complete"],
         }
         if basis == "DISAGREEMENT_PENDING_ADJUDICATION":
             adjudicate.append(item | {"role": "ADJUDICATOR"})
@@ -556,6 +815,10 @@ def review_queue(settings: Settings, set_ref: str, reviewer: str, limit: int = 2
     return {
         "case_set_id": str(set_id),
         "reviewer": reviewer,
+        "superseded_by": newer,
+        # Frozen split-interleaved rank, with cases whose 90-day history is complete first:
+        # only those are eligible for evaluation under history-eligibility-v1 (ADR-021).
+        "queue_order": "history-complete-first-v1",
         "adjudication": adjudicate[:limit],
         "review": review[:limit],
         "remaining_reviews": len(review),
@@ -566,6 +829,7 @@ def review_queue(settings: Settings, set_ref: str, reviewer: str, limit: int = 2
 def review_case(settings: Settings, set_ref: str, case_id: str) -> dict | None:
     """Evidence for a blind review: no rule, weak/silver label or model output."""
     from thermoscope.context import (
+        CONTEXT_RADIUS_M,
         find_candidates,
         find_snapshot,
         snapshot_provider,
@@ -607,7 +871,11 @@ def review_case(settings: Settings, set_ref: str, case_id: str) -> dict | None:
         rep = next(m for m in members if m["id"] == case["representative_observation_id"])
         radius, _ = support_radius_m(rep["scan_km"], rep["track_km"])
         snapshot = find_snapshot(
-            conn, case["lon"], case["lat"], snapshot_provider(DataMode(case["data_mode"]))
+            conn,
+            case["lon"],
+            case["lat"],
+            snapshot_provider(DataMode(case["data_mode"])),
+            radius=max(radius, CONTEXT_RADIUS_M),
         )
         candidates = []
         if snapshot:
@@ -653,12 +921,114 @@ def review_case(settings: Settings, set_ref: str, case_id: str) -> dict | None:
         # Only an adjudicator sees earlier reviews (without reviewer names), to settle a
         # disagreement. Rule outputs, registry-derived labels and model scores are never shown.
         "adjudication": {"needed": True, "earlier_reviews": prior} if pending else None,
-        "guidance": "Decide the likely heat source from independent evidence (imagery, registry "
-        "records, official or company sources). Cite at least one link. Choose UNRESOLVED "
-        "when the evidence does not support a decision. Do not guess. While reviewing, do not "
-        "open the Observations page or its assessment panel: it shows automated assessments.",
+        "guidance": "Decide what kind of source most likely produced this heat: source identity "
+        "only, never whether an accident happened. Only dated imagery near the episode (for "
+        "example NASA Worldview true colour, Sentinel-2 or Landsat with its date) or an official "
+        "or company source counts as independent evidence. OSM, the power-plant registry, land "
+        "cover, FIRMS itself and undated basemaps are the same inputs ThermoScope uses or lack a "
+        "date, so they can support but never decide a test label. Choose UNRESOLVED or LOW "
+        "certainty when the evidence is ambiguous. Do not guess. While reviewing, do not open "
+        "the Observations page or its assessment panel: it shows automated assessments.",
+        "evidence_policy": {
+            "version": EVIDENCE_POLICY,
+            "kinds": list(EVIDENCE_KINDS),
+            "independent_kinds": sorted(INDEPENDENT_KINDS),
+            "imagery_window_days": {
+                "before": IMAGERY_WINDOW_DAYS[0],
+                "after": IMAGERY_WINDOW_DAYS[1],
+            },  # fmt: skip
+            "gold_needs": "independent evidence and HIGH or MEDIUM certainty",
+        },
         "labels": list(SOURCE_LABELS),
         "subtypes": list(SUBTYPES),
+    }
+
+
+def forced_kind(url: str) -> str | None:
+    """Links that can only be one evidence type, whatever the reviewer selects."""
+    parsed = urlsplit(url)
+    host = (parsed.hostname or "").lower()
+    where = host + parsed.path.lower()
+    if any(host == h or host.endswith("." + h) for h in PROJECT_INPUT_HOSTS) or any(
+        where.startswith(p) for p in PROJECT_INPUT_PATHS
+    ):
+        return "PROJECT_INPUT"
+    if any(h in host for h in BASEMAP_HOSTS) or (
+        any(h in host for h in BASEMAP_PATH_HOSTS) and parsed.path.startswith("/maps")
+    ):
+        return "UNDATED_BASEMAP"
+    return None
+
+
+def url_date(url: str) -> date | None:
+    """The imagery date encoded in a NASA Worldview link (t=YYYY-MM-DD...)."""
+    parsed = urlsplit(url)
+    if not (parsed.hostname or "").endswith("worldview.earthdata.nasa.gov"):
+        return None
+    value = parse_qs(parsed.query).get("t", [""])[0][:10]
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def assess_evidence(items, started_at: datetime | None, as_of: datetime | None) -> dict:
+    """Validate cited evidence and decide, server-side, whether it is independent (ADR-021).
+    Without episode dates only the form is checked (imagery cannot be judged independent)."""
+    if not isinstance(items, list) or len(items) > 5:
+        raise ValueError("evidence must be a list of up to five items")
+    before, after = IMAGERY_WINDOW_DAYS
+    lowest = started_at.date() - timedelta(days=before) if started_at else None
+    highest = as_of.date() + timedelta(days=after) if as_of else None
+    checked = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise ValueError("each evidence item needs a link and a type")
+        url = str(item.get("url", "")).strip()
+        kind = item.get("kind")
+        if not URL.fullmatch(url):
+            raise ValueError("evidence links must start with http:// or https://")
+        if kind not in EVIDENCE_KINDS:
+            raise ValueError("choose an evidence type for every link")
+        forced = forced_kind(url)
+        if forced and kind != forced:
+            raise ValueError(f"{url[:60]} can only be cited as {forced}")
+        observed = item.get("observed_on")
+        observed = date.fromisoformat(str(observed)) if observed else None
+        if observed and observed > datetime.now(UTC).date():
+            raise ValueError("an evidence date cannot be in the future")
+        encoded = url_date(url)
+        if kind == "DATED_IMAGERY" and observed is None:
+            raise ValueError("dated imagery needs the imagery date")
+        if kind == "DATED_IMAGERY" and encoded and encoded != observed:
+            raise ValueError("the imagery date must match the date in the Worldview link")
+        licence = str(item.get("licence") or "").strip()[:120] or None
+        if kind == "DATED_IMAGERY":
+            independent = bool(lowest and highest and lowest <= observed <= highest)
+            reason = (
+                "dated imagery near the episode"
+                if independent
+                else ("imagery date too far from the episode")
+            )
+        elif kind == "OFFICIAL_OR_COMPANY":
+            independent, reason = True, "official or company source"
+        else:
+            independent = False
+            reason = {
+                "NEWS_REPORT": "news is secondary evidence and not sufficient alone",
+                "UNDATED_BASEMAP": "undated basemap imagery is not sufficient alone",
+                "PROJECT_INPUT": "same data ThermoScope already uses; not independent",
+                "OTHER": "unclassified source; not sufficient alone",
+            }[kind]
+        checked.append({"url": url, "kind": kind,
+                        "observed_on": observed.isoformat() if observed else None,
+                        "licence": licence, "independent": independent,
+                        "reason": reason})  # fmt: skip
+    return {
+        "policy": EVIDENCE_POLICY,
+        "claim_scope": "SOURCE_IDENTITY_ONLY",
+        "items": checked,
+        "independent": any(i["independent"] for i in checked),
     }
 
 
@@ -666,7 +1036,7 @@ def submit_review(settings: Settings, set_ref: str, payload: dict) -> dict:
     reviewer = str(payload.get("reviewer", "")).strip()
     label = payload.get("source_label")
     certainty = payload.get("certainty")
-    evidence = payload.get("evidence") or []
+    items = payload.get("evidence") or []
     subtype = payload.get("industrial_subtype")
     notes = (payload.get("notes") or "").strip()[:2000]
     case_id = str(payload.get("case_id", ""))
@@ -676,26 +1046,27 @@ def submit_review(settings: Settings, set_ref: str, payload: dict) -> dict:
         raise ValueError("choose a source label and a certainty")
     if subtype is not None and (label != "INDUSTRIAL" or subtype not in SUBTYPES):
         raise ValueError("an industrial subtype applies only to INDUSTRIAL")
-    if (
-        not isinstance(evidence, list)
-        or len(evidence) > 5
-        or not all(isinstance(e, str) and URL.fullmatch(e) for e in evidence)
-    ):
-        raise ValueError("evidence must be up to five http(s) links")
-    if label != "UNRESOLVED" and not evidence:
+    if not isinstance(items, list) or len(items) > 5:
+        raise ValueError("evidence must be a list of up to five items")
+    if label != "UNRESOLVED" and not items:
         raise ValueError("cite at least one evidence link, or choose UNRESOLVED")
-    evidence_date = payload.get("evidence_date") or None
+    assess_evidence(items, None, None)  # form errors before touching the database
     with database_engine(settings) as engine, engine.begin() as conn:
         set_id = case_set_id(conn, set_ref)
+        newer = superseded_by(conn, set_id)
+        if newer:
+            raise CaseSetSuperseded(f"this case set was replaced by {newer}; review there")
         case = conn.execute(
-            text("SELECT review_slots FROM label_cases WHERE case_set_id=:s AND id=:id FOR UPDATE"),
+            text("""SELECT review_slots,started_at,as_of FROM label_cases
+                WHERE case_set_id=:s AND id=:id FOR UPDATE"""),
             {"s": set_id, "id": case_id},
         ).first()
         if case is None:
             raise LookupError("unknown case")
+        evidence = assess_evidence(items, case[1], case[2])
         existing = (
             conn.execute(
-                text("""SELECT reviewer,role,source_label,evidence FROM label_reviews
+                text("""SELECT reviewer,role,source_label,certainty,evidence FROM label_reviews
                     WHERE case_set_id=:s AND case_id=:id ORDER BY reviewed_at,id"""),
                 {"s": set_id, "id": case_id},
             )
@@ -712,6 +1083,7 @@ def submit_review(settings: Settings, set_ref: str, payload: dict) -> dict:
             role = "REVIEWER"
         else:
             raise ValueError("this case already has its reviews")
+        dated = sorted(i["observed_on"] for i in evidence["items"] if i["observed_on"])
         review_id = uuid4()
         conn.execute(
             text("""
@@ -730,12 +1102,18 @@ def submit_review(settings: Settings, set_ref: str, payload: dict) -> dict:
                 "subtype": subtype,
                 "certainty": certainty,
                 "evidence": json.dumps(evidence),
-                "evidence_date": evidence_date,
+                "evidence_date": dated[0] if dated else None,
                 "notes": notes or None,
                 "now": datetime.now(UTC),
             },
         )
-    return {"review_id": str(review_id), "role": role, "case_id": case_id}
+    tier = (
+        "GOLD-eligible"
+        if qualifies({"evidence": evidence, "certainty": certainty})
+        else ("not GOLD-eligible")
+    )
+    return {"review_id": str(review_id), "role": role, "case_id": case_id,
+            "independent_evidence": evidence["independent"], "review_tier": tier}  # fmt: skip
 
 
 def cohen_kappa(pairs: list[tuple[str, str]]) -> float | None:

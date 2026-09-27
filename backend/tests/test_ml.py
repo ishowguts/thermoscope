@@ -61,7 +61,22 @@ def test_osm_and_landcover_features():
     f = osm_features(candidates, True)
     assert f["has_refinery"] == 1 and f["has_flare_tag"] == 1 and f["has_power"] == 0
     assert f["n_industrial_in_support"] == 1 and f["n_industrial_2km"] == 2
-    assert osm_features([], False)["nearest_industrial_m"] == 5000.0
+    assert f["has_nonthermal_power"] == 0
+    assert osm_features([], True)["nearest_industrial_m"] == 5000.0  # covered, nothing mapped
+    uncovered = osm_features([], False)  # incomplete OSM coverage is missing, not zero
+    assert uncovered["osm_covered"] == 0
+    assert all(v is None for k, v in uncovered.items() if k != "osm_covered")
+    solar = {
+        "relation": "INSIDE_SUPPORT",
+        "facility_type": "POWER",
+        "primary_tag": "power=plant",
+        "distance_m": 0.0,
+        "power_source": "solar",
+        "thermal_source_candidate": False,
+    }
+    only_solar = osm_features([solar], True)  # fmt: skip
+    assert only_solar["has_power"] == 0 and only_solar["n_industrial_in_support"] == 0
+    assert only_solar["has_nonthermal_power"] == 1 and only_solar["nearest_industrial_m"] == 5000
     land = {"support": {"valid_fraction": 1.0,
                         "fractions": [{"class": "CROPLAND", "fraction": 0.7},
                                       {"class": "MANGROVES", "fraction": 0.1}]},
@@ -139,7 +154,7 @@ def synthetic_rows(n_groups=60, per_group=4, seed=3):
         split = ("TRAIN", "TRAIN", "TRAIN", "VALIDATION", "TEST")[g % 5]
         industrial = g % 2 == 0
         for k in range(per_group):
-            features = {c: None for c in FEATURES}
+            features = {c: None for c in FEATURES} | {"history_complete": True}
             features |= {
                 "night_fraction": float(np.clip((0.8 if industrial else 0.2)
                                                 + rng.normal(0, 0.15), 0, 1)),
@@ -178,6 +193,8 @@ def test_training_reports_baselines_intervals_and_never_promotes_small_tests(mon
 
     monkeypatch.setattr(ml, "batch_engine", fake_engine)
     monkeypatch.setattr(ml, "case_set_id", lambda conn, ref: "set")
+    monkeypatch.setattr(ml, "superseded_by", lambda conn, set_id: None)
+    monkeypatch.setattr(ml, "case_set_grouping", lambda conn, set_id: "facility-aware-v1")
     monkeypatch.setattr(ml, "load_training_rows", lambda conn, set_id: synthetic_rows())
 
     def fake_save(settings, set_id, run_id, out_dir, report, model, predictions, policy,
@@ -201,8 +218,27 @@ def test_training_reports_baselines_intervals_and_never_promotes_small_tests(mon
     assert len(captured["predictions"]) == 48
     assert all(0 <= p["p_industrial"] <= 1 for p in captured["predictions"])
 
+    held = report["held_out_region"]
+    assert held["status"] == "EVALUATED" and held["support"] == report["support"]["test"]
+    assert set(held["regions"]) == {"r1", "r2"}  # each region scored by the other's model
+
     ml.train_and_evaluate(settings, "set", dry_run_weak=True)
     assert captured["report"]["status"] == "DRY_RUN_NOT_EVIDENCE"
+
+    # Cases without a complete history window are set aside, never imputed.
+    rows = synthetic_rows()
+    for r in rows[:8]:
+        r["features"]["history_complete"] = False
+    monkeypatch.setattr(ml, "load_training_rows", lambda conn, set_id: rows)
+    ml.train_and_evaluate(settings, "set")
+    policy = captured["report"]["history_policy"]
+    assert policy["cases_eligible"] == len(rows) - 8
+    assert sum(policy["cases_excluded_by_split"].values()) == 8
+
+    # A superseded case set cannot be evaluated at all.
+    monkeypatch.setattr(ml, "superseded_by", lambda conn, set_id: "newer-set")
+    with pytest.raises(ValueError, match="superseded"):
+        ml.train_and_evaluate(settings, "set")
 
 
 def test_dry_run_scores_never_reach_the_model_list():

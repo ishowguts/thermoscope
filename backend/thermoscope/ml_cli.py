@@ -13,8 +13,22 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="ThermoScope P05 labels and models")
     parser.add_argument(
         "command",
-        choices=["import-gppd", "build-cases", "landcover", "features", "train", "summary"],
+        choices=[
+            "import-gppd",
+            "build-cases",
+            "landcover",
+            "features",
+            "train",
+            "summary",
+            "grouping-audit",
+            "fingerprint",
+        ],
     )
+    parser.add_argument(
+        "--grouping", default="facility-aware-v1", help="site-2km-v1 or facility-aware-v1 (default)"
+    )
+    parser.add_argument("--supersedes", help="case set this new set replaces (needs --reason)")
+    parser.add_argument("--reason", help="recorded reason for superseding")  # fmt: skip
     parser.add_argument("--case-set", help="case-set name or id")
     parser.add_argument("--name", help="new case-set name (lowercase, digits, - or _)")
     parser.add_argument("--data-mode", choices=list(DataMode), default=DataMode.HISTORICAL_REPLAY)
@@ -40,7 +54,14 @@ def main(argv=None):
                 parser.error("build-cases needs --name")
             from thermoscope.labels import build_case_set
 
-            report = build_case_set(settings, args.name, DataMode(args.data_mode))
+            report = build_case_set(
+                settings,
+                args.name,
+                DataMode(args.data_mode),
+                grouping=args.grouping,
+                supersedes=args.supersedes,
+                reason=args.reason,
+            )
         elif args.command == "landcover":
             from thermoscope.ml import extract_case_landcover
 
@@ -55,6 +76,14 @@ def main(argv=None):
             report = train_and_evaluate(
                 settings, _need(parser, args.case_set), dry_run_weak=args.dry_run_weak
             )
+        elif args.command == "grouping-audit":
+            from thermoscope.labels import grouping_audit
+
+            report = grouping_audit(settings, _need(parser, args.case_set))
+        elif args.command == "fingerprint":
+            from thermoscope.labels import case_set_fingerprint
+
+            report = case_set_fingerprint(settings, _need(parser, args.case_set))
         else:
             from thermoscope.labels import label_summary
 

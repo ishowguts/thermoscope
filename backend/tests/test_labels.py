@@ -1,12 +1,16 @@
 """P05 label integrity: frozen group splits, blind review ordering, tiering and validation."""
 
+from datetime import UTC, datetime
+
 import pytest
 from fastapi.testclient import TestClient
 from thermoscope.config import Settings
 from thermoscope.labels import (
+    assess_evidence,
     assign_splits,
     cohen_kappa,
     eligible_for_test,
+    forced_kind,
     resolve_label,
     review_order,
     submit_review,
@@ -14,11 +18,15 @@ from thermoscope.labels import (
 )
 from thermoscope.main import create_app
 
-URL = "https://worldview.earthdata.nasa.gov/?v=1,2,3,4"
+URL = "https://worldview.earthdata.nasa.gov/?v=1,2,3,4&t=2026-05-01"
+START = datetime(2026, 5, 1, 8, tzinfo=UTC)
+IMAGERY = {"url": URL, "kind": "DATED_IMAGERY", "observed_on": "2026-05-01"}
+OSM_LINK = {"url": "https://www.openstreetmap.org/way/1", "kind": "PROJECT_INPUT"}
 
 
-def review(label, role="REVIEWER", evidence=(URL,), who="a"):
-    return {"source_label": label, "role": role, "evidence": list(evidence), "reviewer": who}
+def review(label, role="REVIEWER", evidence=(IMAGERY,), who="a", certainty="HIGH"):
+    return {"source_label": label, "role": role, "reviewer": who, "certainty": certainty,
+            "evidence": assess_evidence(list(evidence), START, START)}  # fmt: skip
 
 
 def cases(region, groups):
@@ -81,6 +89,25 @@ def test_tiers_gold_needs_evidence_and_test_needs_two_agreeing_reviews():
         [review("OTHER", evidence=()), review("OTHER", evidence=(), who="b")], 2, None, None
     )
     assert uncited["tier"] == "SILVER" and not eligible_for_test(uncited)
+    # Citing ThermoScope's own inputs is not independent evidence.
+    circular = resolve_label(
+        [
+            review("INDUSTRIAL", evidence=(OSM_LINK,)),
+            review("INDUSTRIAL", evidence=(OSM_LINK,), who="b"),
+        ],
+        2,
+        None,
+        None,
+    )
+    assert circular["tier"] == "SILVER" and not eligible_for_test(circular)
+    # Ambiguity stays out of test truth: a LOW-certainty agreement is not GOLD.
+    doubtful = resolve_label(
+        [review("INDUSTRIAL"), review("INDUSTRIAL", who="b", certainty="LOW")], 2, None, None
+    )
+    assert doubtful["tier"] == "SILVER"
+    legacy = {"source_label": "OTHER", "role": "REVIEWER", "reviewer": "z", "certainty": "HIGH",
+              "evidence": [URL]}  # fmt: skip
+    assert resolve_label([legacy], 1, None, None)["tier"] == "SILVER"  # unknown format
     split = [review("INDUSTRIAL"), review("AGRICULTURAL_BURN", who="b")]
     assert resolve_label(split, 2, "INDUSTRIAL", "INDUSTRIAL")["basis"] == (
         "DISAGREEMENT_PENDING_ADJUDICATION"
@@ -98,6 +125,33 @@ def test_registry_and_rules_never_become_gold():
     weak = resolve_label([], 2, None, "AGRICULTURAL_BURN")
     assert weak["tier"] == "WEAK" and not eligible_for_test(weak)
     assert resolve_label([], 1, None, "UNKNOWN")["tier"] is None
+
+
+def test_evidence_policy_is_decided_by_the_server():
+    assert forced_kind("https://www.openstreetmap.org/way/1") == "PROJECT_INPUT"
+    assert forced_kind("https://firms.modaps.eosdis.nasa.gov/map/") == "PROJECT_INPUT"
+    assert forced_kind("https://github.com/wri/global-power-plant-database") == "PROJECT_INPUT"
+    assert forced_kind("https://www.google.com/maps/@22.3,69.8,1200m") == "UNDATED_BASEMAP"
+    assert forced_kind("https://www.google.com/search?q=refinery") is None
+    assert forced_kind(URL) is None
+    with pytest.raises(ValueError, match="PROJECT_INPUT"):
+        assess_evidence([{"url": OSM_LINK["url"], "kind": "DATED_IMAGERY",
+                          "observed_on": "2026-05-01"}], START, START)  # fmt: skip
+    with pytest.raises(ValueError, match="imagery date"):
+        assess_evidence([{"url": URL, "kind": "DATED_IMAGERY"}], START, START)
+    with pytest.raises(ValueError, match="match the date"):
+        assess_evidence([IMAGERY | {"observed_on": "2026-04-30"}], START, START)
+    old_image = {"url": "https://example.org/s2.png", "kind": "DATED_IMAGERY",
+                 "observed_on": "2024-01-01"}  # fmt: skip
+    assert not assess_evidence([old_image], START, START)["independent"]
+    news = {"url": "https://example.org/news", "kind": "NEWS_REPORT"}
+    assert not assess_evidence([news], START, START)["independent"]
+    report = {"url": "https://example.org/annual-report.pdf", "kind": "OFFICIAL_OR_COMPANY",
+              "licence": "link only"}  # fmt: skip
+    checked = assess_evidence([news, report], START, START)
+    assert checked["independent"] and checked["claim_scope"] == "SOURCE_IDENTITY_ONLY"
+    assert assess_evidence([IMAGERY], START, START)["independent"]
+    assert not assess_evidence([IMAGERY], None, None)["independent"]  # form check only
 
 
 def test_kappa():
@@ -118,7 +172,7 @@ def test_kappa():
                 "source_label": "OTHER",
                 "certainty": "HIGH",
                 "industrial_subtype": "GAS_FLARE",
-                "evidence": [URL],
+                "evidence": [IMAGERY],
             },
             "subtype",
         ),  # fmt: skip
@@ -127,11 +181,20 @@ def test_kappa():
                 "reviewer": "Asha",
                 "source_label": "OTHER",
                 "certainty": "HIGH",
-                "evidence": ["javascript:alert(1)"],
+                "evidence": [{"url": "javascript:alert(1)", "kind": "OTHER"}],
             },
             "links",
         ),  # fmt: skip
         ({"reviewer": "Asha", "source_label": "OTHER", "certainty": "HIGH"}, "evidence link"),
+        (
+            {
+                "reviewer": "Asha",
+                "source_label": "OTHER",
+                "certainty": "HIGH",
+                "evidence": [{"url": URL}],
+            },
+            "evidence type",
+        ),  # fmt: skip
     ],
 )
 def test_submit_review_validates_before_touching_the_database(payload, message):
@@ -142,7 +205,7 @@ def test_submit_review_validates_before_touching_the_database(payload, message):
 
 def body():
     return {"case_id": "a" * 64, "reviewer": "Asha", "source_label": "INDUSTRIAL",
-            "certainty": "HIGH", "evidence": [URL]}  # fmt: skip
+            "certainty": "HIGH", "evidence": [IMAGERY]}  # fmt: skip
 
 
 def test_review_submission_is_disabled_without_a_token():
@@ -165,6 +228,22 @@ def test_review_submission_rejects_a_wrong_token_and_bad_bodies():
     extra = client.post(url, json=body() | {"model_score": 0.9},
                         headers={"X-Annotation-Token": "correct-token"})  # fmt: skip
     assert extra.status_code == 422
+    bare = client.post(url, json=body() | {"evidence": [URL]},
+                       headers={"X-Annotation-Token": "correct-token"})  # fmt: skip
+    assert bare.status_code == 422  # a bare link without a type is no longer accepted
+    claimed = client.post(url, json=body() | {"evidence": [IMAGERY | {"independent": True}]},
+                          headers={"X-Annotation-Token": "correct-token"})  # fmt: skip
+    assert claimed.status_code == 422  # clients cannot declare their evidence independent
+
+
+def test_review_only_server_withholds_automated_assessments():
+    client = TestClient(create_app(Settings(_env_file=None, database_url=None, review_only=True)))
+    oid = "0" * 64
+    for path in (f"/api/v1/observations/{oid}/assessment", f"/api/v1/observations/{oid}/timeline"):
+        response = client.get(path)
+        assert response.status_code == 403
+        assert response.json()["code"] == "WITHHELD_ON_REVIEW_SERVER"
+    assert client.get("/api/v1/status").json()["review_only"] is True
 
 
 def test_cors_allows_review_posts_from_the_workbench_only():

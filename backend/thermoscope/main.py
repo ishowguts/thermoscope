@@ -19,8 +19,10 @@ from thermoscope.database import check_readiness
 from thermoscope.events import event_detail, list_events
 from thermoscope.firms import IngestError
 from thermoscope.labels import (
+    EVIDENCE_KINDS,
     SOURCE_LABELS,
     SUBTYPES,
+    CaseSetSuperseded,
     label_summary,
     list_case_sets,
     models_list,
@@ -41,15 +43,24 @@ CASE_SET = Path(pattern="^[a-z0-9][a-z0-9_-]{2,60}$|^[0-9a-f-]{36}$")
 REVIEWER = Query(min_length=2, max_length=60, pattern=r"^[\w .'-]{2,60}$")
 
 
+class EvidenceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    url: str = Field(min_length=8, max_length=500)
+    kind: Literal[EVIDENCE_KINDS]
+    observed_on: date | None = None
+    licence: str | None = Field(default=None, max_length=120)
+
+
 class ReviewIn(BaseModel):
+    """Evidence items replace the earlier bare-link list (unreleased P05 API, ADR-021)."""
+
     model_config = ConfigDict(extra="forbid")
     case_id: str = Field(pattern="^[0-9a-f]{64}$")
     reviewer: str = Field(min_length=2, max_length=60)
     source_label: Literal[SOURCE_LABELS]
     industrial_subtype: Literal[SUBTYPES] | None = None
     certainty: Literal["HIGH", "MEDIUM", "LOW"]
-    evidence: list[str] = Field(default_factory=list, max_length=5)
-    evidence_date: date | None = None
+    evidence: list[EvidenceIn] = Field(default_factory=list, max_length=5)
     notes: str | None = Field(default=None, max_length=2000)
 
 
@@ -74,6 +85,14 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
                 "request_id": request.state.request_id,
                 "retryable": status == 503,
             },
+        )
+
+    def withheld(request):
+        return error_response(
+            request,
+            "WITHHELD_ON_REVIEW_SERVER",
+            "Automated assessments are withheld on the blind-review server.",
+            403,
         )
 
     @app.exception_handler(RequestValidationError)
@@ -118,6 +137,7 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
             "ingestion_status": "MANUAL_CLI",
             "classifier_status": "NOT_SERVED_AWAITING_REVIEWED_LABELS",
             "rules_status": "HEURISTIC_RULES_UNCALIBRATED",
+            "review_only": config.review_only,
             "observation_count": None,
             "last_acquisition_at": None,
         }
@@ -236,6 +256,8 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
         basis: AssessmentBasis = AssessmentBasis.RETROSPECTIVE,
         as_of: datetime | None = None,
     ):
+        if config.review_only:
+            return withheld(request)
         if as_of is not None and (as_of.tzinfo is None or as_of > datetime.now(UTC)):
             return error_response(
                 request, "INVALID_QUERY", "as_of needs a timezone and cannot be in the future.", 422
@@ -264,6 +286,8 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
         basis: AssessmentBasis = AssessmentBasis.RETROSPECTIVE,
         days: int = Query(default=180, ge=7, le=180),
     ):
+        if config.review_only:
+            return withheld(request)
         try:
             result = observation_timeline(config, observation_id, data_mode, days, basis.value)
         except (SQLAlchemyError, ValueError):
@@ -364,6 +388,8 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
             return error_response(request, "NOT_FOUND", "No case set with that name.", 404)
         except LookupError:
             return error_response(request, "NOT_FOUND", "No such case in this case set.", 404)
+        except CaseSetSuperseded as error:
+            return error_response(request, "CASE_SET_SUPERSEDED", str(error), 409)
         except ValueError as error:
             return error_response(request, "INVALID_REVIEW", str(error), 422)
         except IntegrityError:

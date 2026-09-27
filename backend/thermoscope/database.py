@@ -5,7 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from thermoscope.config import Settings
 
-SCHEMA_REVISION = "0006_labels_models"
+SCHEMA_REVISION = "0007_review_integrity"
 
 
 API_STATEMENT_TIMEOUT_MS = 2000

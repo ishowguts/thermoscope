@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     firms_map_key: SecretStr | None = None
     # Shared secret for submitting label reviews; reviews are disabled while it is unset.
     annotation_token: SecretStr | None = None
+    # A reviewer-facing server: rule assessments and timelines are withheld so blind reviewers
+    # cannot look up the automated answer (P05 review integrity).
+    review_only: bool = False
     object_store_local_path: Path = Path("local/objects")
     app_data_mode: DataMode = DataMode.SYNTHETIC_FIXTURE
     allowed_origins: list[str] = ["http://127.0.0.1:5173", "http://localhost:5173"]

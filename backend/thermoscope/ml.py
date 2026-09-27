@@ -20,6 +20,7 @@ import numpy as np
 from sqlalchemy import text
 
 from thermoscope.assessment import (
+    BASELINE_WINDOW,
     Basis,
     covered_dates,
     history_features,
@@ -27,25 +28,37 @@ from thermoscope.assessment import (
     per_overpass_max,
     source_rule,
 )
+from thermoscope.assessment import MIN_COVERAGE as HISTORY_MIN_COVERAGE
 from thermoscope.config import DataMode, Settings
 from thermoscope.context import (
+    CONTEXT_RADIUS_M,
     find_candidates,
     find_snapshot,
     snapshot_provider,
     support_radius_m,
 )
 from thermoscope.database import batch_engine, database_engine
+from thermoscope.firms import IngestError
 from thermoscope.labels import (
+    EVIDENCE_POLICY,
     FEATURE_VERSION,
     LABEL_POLICY,
     REGISTRY_MATCH_M,
+    case_set_grouping,
     case_set_id,
     registry_matches,
     resolved_labels,
+    superseded_by,
 )
 from thermoscope.landcover import observation_landcover
 
-MODEL_VERSION = "xgb-source-binary-v2"
+MODEL_VERSION = "xgb-source-binary-v3"
+# history-eligibility-v1 (ADR-021): only cases whose whole 90-day history window was retrieved
+# (>= 80 % of days, the P04 threshold) are trained or evaluated. Early cases in the archive
+# would otherwise carry truncated history that tracks the season. Fixed before any score.
+HISTORY_POLICY = "history-eligibility-v1"
+HELD_OUT_REGION_PROTOCOL = "held-out-region-v1"
+CONTEXT_TIMING = "RETROSPECTIVE"  # OSM (Sept 2026), WorldCover 2021, SP archive: not as-of
 DISTANCE_CAP_M = 5000.0
 EPISODE = [
     "obs_count", "overpass_count", "duration_h", "frp_max", "frp_overpass_median",
@@ -59,10 +72,13 @@ HISTORY = [
     "active_days_30", "active_days_90", "overpasses_90", "days_since_last",
     "history_frp_median_90", "history_night_fraction_90",
 ]  # fmt: skip
+# Counts and types use only features that can be combustion sources; mapped solar, wind or
+# water power stays visible as its own flag (ADR-020). Without complete OSM coverage of the
+# context circle every OSM input is missing, not zero.
 OSM = [
     "osm_covered", "n_industrial_in_support", "nearest_industrial_m", "n_industrial_2km",
     "has_power", "has_refinery", "has_mine", "has_petrochem_steel_lng", "has_flare_tag",
-    "has_chimney_tag", "has_kiln_tag",
+    "has_chimney_tag", "has_kiln_tag", "has_nonthermal_power",
 ]  # fmt: skip
 LANDCOVER = [
     "lc_valid", "lc_built", "lc_crop", "lc_tree", "lc_shrub", "lc_grass", "lc_bare",
@@ -166,14 +182,21 @@ def prior_history(detections, runs, started_at) -> dict:
 
 
 def osm_features(candidates: list[dict], covered: bool) -> dict:
-    inside = [c for c in candidates if c["relation"] == "INSIDE_SUPPORT"]
+    if not covered:
+        return {k: None for k in OSM} | {"osm_covered": 0}
+    thermal = [c for c in candidates if c.get("thermal_source_candidate", True)]
+    nonthermal = [
+        c for c in candidates
+        if not c.get("thermal_source_candidate", True) and c["relation"] == "INSIDE_SUPPORT"
+    ]  # fmt: skip
+    inside = [c for c in thermal if c["relation"] == "INSIDE_SUPPORT"]
     types = {c["facility_type"] for c in inside}
     tags = {c["primary_tag"] for c in inside}
     return {
-        "osm_covered": int(covered),
+        "osm_covered": 1,
         "n_industrial_in_support": len(inside),
-        "nearest_industrial_m": min([c["distance_m"] for c in candidates] + [DISTANCE_CAP_M]),
-        "n_industrial_2km": len(candidates),
+        "nearest_industrial_m": min([c["distance_m"] for c in thermal] + [DISTANCE_CAP_M]),
+        "n_industrial_2km": len(thermal),
         "has_power": int("POWER" in types),
         "has_refinery": int("REFINERY" in types),
         "has_mine": int("MINE" in types),
@@ -181,6 +204,7 @@ def osm_features(candidates: list[dict], covered: bool) -> dict:
         "has_flare_tag": int("man_made=flare" in tags),
         "has_chimney_tag": int("man_made=chimney" in tags),
         "has_kiln_tag": int("man_made=kiln" in tags),
+        "has_nonthermal_power": int(bool(nonthermal)),
     }
 
 
@@ -212,7 +236,7 @@ def landcover_features(land: dict | None) -> dict:
 
 
 def compute_case_features(settings: Settings, set_ref: str) -> dict:
-    written = weak = silver = 0
+    written = weak = silver = unchanged = complete = 0
     with batch_engine(settings) as engine, engine.begin() as conn:
         set_id = case_set_id(conn, set_ref)
         mode = DataMode(
@@ -253,18 +277,32 @@ def compute_case_features(settings: Settings, set_ref: str) -> dict:
             rep = next(m for m in members if m["id"] == case["representative_observation_id"])
             inputs = load_inputs(conn, rep["id"], mode, case["as_of"], Basis.RETROSPECTIVE)
             radius, _ = support_radius_m(rep["scan"], rep["track"])
-            snapshot = find_snapshot(conn, case["lon"], case["lat"], snapshot_provider(mode))
+            snapshot = find_snapshot(
+                conn,
+                case["lon"],
+                case["lat"],
+                snapshot_provider(mode),
+                radius=max(radius, CONTEXT_RADIUS_M),
+            )
             candidates = []
             if snapshot:
                 candidates, _ = find_candidates(
                     conn, case["lon"], case["lat"], radius, snapshot["id"]
                 )
             land = observation_landcover(conn, rep["id"], rep["acquired_at"])
+            history = prior_history(inputs["detections"], inputs["runs"], case["started_at"])
             features = (
                 episode_features(members)
-                | prior_history(inputs["detections"], inputs["runs"], case["started_at"])
+                | history
                 | osm_features(candidates, snapshot is not None)
                 | landcover_features(land)
+                | {
+                    # Audit fields, never model inputs.
+                    "history_complete": history["coverage_90"] >= HISTORY_MIN_COVERAGE,
+                    "history_window_days": BASELINE_WINDOW,
+                    "nrt_superseded_by_sp": inputs["stream"]["nrt_superseded_by_sp"],
+                    "context_timing": CONTEXT_TIMING,
+                }
             )
             rule = source_rule(
                 inputs["context"],
@@ -282,6 +320,20 @@ def compute_case_features(settings: Settings, set_ref: str) -> dict:
             types = [m["nasa_type"] for m in members if m["nasa_type"] is not None]
             nasa_type = max(set(types), key=types.count) if types else None
             body = json.dumps(features, sort_keys=True, default=float)
+            sha = hashlib.sha256(
+                (body + json.dumps([weak_label, silver_label, nasa_type])).encode()
+            ).hexdigest()
+            stored = conn.execute(
+                text("""SELECT sha256 FROM case_features WHERE case_set_id=:s AND case_id=:c
+                    AND feature_version=:v"""),
+                {"s": set_id, "c": case["id"], "v": FEATURE_VERSION},
+            ).scalar()
+            if stored is not None:
+                if stored != sha:
+                    # A versioned artifact never changes meaning in place: bump the version.
+                    raise IngestError("FEATURES_DIFFER_FROM_STORED_VERSION")
+                unchanged += 1
+                continue
             conn.execute(
                 text("""
                 INSERT INTO case_features (case_set_id,case_id,feature_version,features,
@@ -289,12 +341,6 @@ def compute_case_features(settings: Settings, set_ref: str) -> dict:
                     sha256,computed_at)
                 VALUES (:s,:case,:version,CAST(:features AS jsonb),:weak,:rule,:silver,
                     CAST(:evidence AS jsonb),:nasa,:sha,:now)
-                ON CONFLICT (case_set_id,case_id,feature_version) DO UPDATE SET
-                    features=EXCLUDED.features,weak_label=EXCLUDED.weak_label,
-                    weak_rule=EXCLUDED.weak_rule,silver_label=EXCLUDED.silver_label,
-                    silver_evidence=EXCLUDED.silver_evidence,
-                    nasa_type_majority=EXCLUDED.nasa_type_majority,sha256=EXCLUDED.sha256,
-                    computed_at=EXCLUDED.computed_at
             """),
                 {
                     "s": set_id,
@@ -306,15 +352,17 @@ def compute_case_features(settings: Settings, set_ref: str) -> dict:
                     "silver": silver_label,
                     "evidence": json.dumps(matches[:3]) if matches else None,
                     "nasa": nasa_type,
-                    "sha": hashlib.sha256(body.encode()).hexdigest(),
+                    "sha": sha,
                     "now": datetime.now(UTC),
                 },
             )
             written += 1
             weak += weak_label is not None
             silver += silver_label is not None
+            complete += features["history_complete"]
     return {"case_set_id": str(set_id), "feature_version": FEATURE_VERSION, "cases": written,
-            "weak_labels": weak, "silver_labels": silver}  # fmt: skip
+            "unchanged": unchanged, "weak_labels": weak, "silver_labels": silver,
+            "history_complete": complete}  # fmt: skip
 
 
 # ---------------------------------------------------------------------------------------------
@@ -500,9 +548,19 @@ def load_training_rows(conn, set_id) -> list[dict]:
 def train_and_evaluate(settings: Settings, set_ref: str, *, dry_run_weak: bool = False) -> dict:
     with batch_engine(settings) as engine, engine.connect() as conn:
         set_id = case_set_id(conn, set_ref)
-        rows = load_training_rows(conn, set_id)
-    if not rows:
+        newer = superseded_by(conn, set_id)
+        grouping = case_set_grouping(conn, set_id)
+        all_rows = load_training_rows(conn, set_id)
+    if newer:
+        raise ValueError(f"case set superseded by {newer}; its grouping is not safe to evaluate")
+    if not all_rows:
         raise ValueError("no case features; run the features step first")
+    # history-eligibility-v1: incomplete-history cases are set aside, never imputed.
+    rows = [r for r in all_rows if r["features"].get("history_complete") is True]
+    excluded = defaultdict(int)
+    for r in all_rows:
+        if r["features"].get("history_complete") is not True:
+            excluded[r["split"]] += 1
     policy = "DRY_RUN_WEAK" if dry_run_weak else "REVIEWED"
     allowed_train = {"GOLD", "SILVER", "WEAK"} if dry_run_weak else {"GOLD", "SILVER"}
 
@@ -536,6 +594,16 @@ def train_and_evaluate(settings: Settings, set_ref: str, *, dry_run_weak: bool =
         "labels_sha256": labels_sha,
         "support": {"train": support(train), "validation": support(val), "test": support(test)},
         "tiers_used": sorted({r["resolved"]["tier"] for r in train + val + test}),
+        "grouping": grouping,
+        "history_policy": {
+            "version": HISTORY_POLICY,
+            "rule": f"retrieved-day coverage of the {BASELINE_WINDOW} days before the episode "
+            f">= {HISTORY_MIN_COVERAGE}",
+            "cases_eligible": len(rows),
+            "cases_excluded_by_split": dict(sorted(excluded.items())),
+        },
+        "context_timing": CONTEXT_TIMING,
+        "evidence_policy": EVIDENCE_POLICY,
     }
     enough_train = min(report["support"]["train"].values()) >= MIN_TRAIN_PER_CLASS
     enough_val = min(report["support"]["validation"].values()) >= MIN_VALIDATION_PER_CLASS
@@ -553,6 +621,8 @@ def train_and_evaluate(settings: Settings, set_ref: str, *, dry_run_weak: bool =
                "adjudication)")
             + "."
         )  # fmt: skip
+        report["protocols"] = {"UNSEEN_SITE": "NOT_RUN", "KNOWN_SITE_FUTURE": "NOT_RUN",
+                               HELD_OUT_REGION_PROTOCOL: "NOT_RUN"}  # fmt: skip
         return save_run(settings, set_id, run_id, out_dir, report, None, [], policy)
 
     y_train = np.array([r["target"] for r in train])
@@ -623,6 +693,7 @@ def train_and_evaluate(settings: Settings, set_ref: str, *, dry_run_weak: bool =
         "calibration": calibration,
         "abstention": abstention,
         "known_site_future": known_site_future(rows, dry_run_weak),
+        "held_out_region": held_out_region(train, test),
         "nasa_type_retrospective": {
             "cases_with_type": len(nasa),
             "note": "NASA SP 'type' (0 = presumed vegetation fire, 2 = other static land "
@@ -669,6 +740,44 @@ def train_and_evaluate(settings: Settings, set_ref: str, *, dry_run_weak: bool =
 def _rate(pairs, value):
     matching = [t for v, t in pairs if v == value]
     return None if not matching else round(sum(matching) / len(matching), 4)
+
+
+def held_out_region(train: list[dict], test: list[dict]) -> dict:
+    """held-out-region-v1: for each region, a model trained on the other regions' TRAIN cases
+    scores that region's TEST cases (uncalibrated, 0.5 threshold). Predictions are pooled; the
+    P04 rules are scored on the same pooled cases. Needs the usual per-class minimums."""
+    pooled_y, pooled_p, pooled_rules, groups, regions = [], [], [], [], {}
+    for region in sorted({r["region_id"] for r in test}):
+        fit_rows = [r for r in train if r["region_id"] != region]
+        held = [r for r in test if r["region_id"] == region]
+        y_fit = [r["target"] for r in fit_rows]
+        if min(y_fit.count(0), y_fit.count(1)) < MIN_TRAIN_PER_CLASS:
+            regions[region] = {"status": "INSUFFICIENT_TRAINING_LABELS", "test_cases": len(held)}
+            continue
+        model = fit_xgb(matrix(fit_rows, FEATURES), np.array(y_fit))
+        p = model.predict_proba(matrix(held, FEATURES))[:, 1]
+        rules, _ = rule_predictions(held)
+        pooled_y += [r["target"] for r in held]
+        pooled_p += list(p)
+        pooled_rules += list(rules)
+        groups += [r["split_group"] for r in held]
+        regions[region] = {"status": "SCORED", "test_cases": len(held)}
+    y = np.array(pooled_y)
+    counts = {"INDUSTRIAL": int((y == 1).sum()), "NON_INDUSTRIAL": int((y == 0).sum())}
+    if min(counts.values()) < MIN_TEST_PER_CLASS_REPORT:
+        return {"protocol": HELD_OUT_REGION_PROTOCOL, "status": "INSUFFICIENT_LABELS",
+                "support": counts, "regions": regions}  # fmt: skip
+    pred = (np.array(pooled_p) >= 0.5).astype(int)
+    rules = np.array(pooled_rules)
+    return {
+        "protocol": HELD_OUT_REGION_PROTOCOL,
+        "status": "EVALUATED",
+        "support": counts,
+        "regions": regions,
+        "full_uncalibrated": classification_metrics(y, pred),
+        "rules_p04_forced": classification_metrics(y, rules),
+        "bootstrap": bootstrap_ci(groups, y, {"full": pred, "rules": rules}, ("full", "rules")),
+    }
 
 
 def known_site_future(rows, dry_run_weak) -> dict:
@@ -799,13 +908,22 @@ def model_card(report: dict) -> str:
         f"`{report['label_policy']}`; labels snapshot `{report['labels_sha256'][:16]}…`.",
         f"- Training support: {s['train']}; validation: {s['validation']}; test: {s['test']}.",
         f"- Label tiers used: {', '.join(t for t in report['tiers_used'] if t) or 'none'}.",
-        "- GOLD = human review with cited evidence (test cases need two agreeing reviews or "
-        "an adjudication). SILVER = registry corroboration (WRI GPPD v1.3.0, thermal power "
-        "plants within 1.5 km) or a single review. WEAK = this project's P04 rules.",
+        "- GOLD = human review citing independent evidence under "
+        f"`{report.get('evidence_policy', EVIDENCE_POLICY)}` (dated imagery near the episode or "
+        "an official/company source) with HIGH or MEDIUM certainty; test cases need two "
+        "agreeing reviews or an adjudication. SILVER = registry corroboration (WRI GPPD "
+        "v1.3.0, thermal power plants within 1.5 km) or a review without independent "
+        "evidence. WEAK = this project's P04 rules. Labels describe source identity only, "
+        "never an accident.",
+        f"- Case grouping `{report.get('grouping')}`; history policy "
+        f"`{(report.get('history_policy') or {}).get('version')}` (cases without a complete "
+        "90-day history window are set aside); context timing "
+        f"`{report.get('context_timing')}` (OSM from September 2026, WorldCover 2021).",
         "",
         "## Evaluation protocols",
-        "- Unseen-site: TRAIN / VALIDATION / TEST are disjoint site groups (sites within 2 km "
-        "merged), frozen before labelling.",
+        "- Unseen-site: TRAIN / VALIDATION / TEST are disjoint site groups, frozen before "
+        "labelling (facility-aware grouping merges sites near one mapped facility or plant).",
+        "- Held-out region: leave one region out, pooled over regions, uncalibrated.",
         "- Known-site future: trained on earlier cases, tested on later cases at seen sites.",
         "- Group bootstrap intervals resample whole site groups.",
         "",
@@ -823,8 +941,17 @@ def model_card(report: dict) -> str:
             f"- Brier (calibrated full model): {evaluation['brier_full_calibrated']}",
             f"- Paired macro-F1 difference vs best baseline, 95% interval: "
             f"{report['bootstrap']['paired_difference_ci']}",
-            "",
         ]
+        held = report.get("held_out_region") or {}
+        if held.get("status") == "EVALUATED":
+            lines.append(
+                f"- Held-out region (pooled, uncalibrated): macro-F1 "
+                f"{held['full_uncalibrated']['macro_f1']} vs P04 rules "
+                f"{held['rules_p04_forced']['macro_f1']} on {held['support']}"
+            )
+        else:
+            lines.append(f"- Held-out region: {held.get('status', 'NOT_RUN')}")
+        lines.append("")
     elif evaluation:
         lines += ["## Pipeline dry run", "",
                   "Numbers from this run are withheld from the card on purpose: training and "
@@ -834,7 +961,9 @@ def model_card(report: dict) -> str:
         lines += ["## Results", "", "No evaluation: not enough reviewed labels.", ""]
     lines += [
         "## Limitations",
-        "- Pilot regions in India only; March–September 2026; NOAA-20 VIIRS only.",
+        "- Pilot regions in India only; March–September 2026; NOAA-20 VIIRS only. Episodes "
+        "before about late June lack a complete 90-day history and are excluded until the SP "
+        "archive is extended back to 30 December 2025.",
         "- OSM is incomplete and dated after most observations (retrospective context).",
         "- WorldCover is from 2021; land use may have changed.",
         "- Thresholds for abstention are chosen on validation data and are not a guarantee.",
