@@ -1,4 +1,3 @@
-import hmac
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from enum import StrEnum
@@ -33,6 +32,7 @@ from thermoscope.labels import (
 )
 from thermoscope.observations import catalog, list_observations, query_params
 from thermoscope.regions import Bounds, Product
+from thermoscope.reviewers import SIGN_IN, authenticate, bearer_token, reviewers_configured
 
 
 class AssessmentBasis(StrEnum):
@@ -41,7 +41,7 @@ class AssessmentBasis(StrEnum):
 
 
 CASE_SET = Path(pattern="^[a-z0-9][a-z0-9_-]{2,60}$|^[0-9a-f-]{36}$")
-REVIEWER = Query(min_length=2, max_length=60, pattern=r"^[\w .'-]{2,60}$")
+AUTHORIZATION = Header(max_length=300)
 
 
 class EvidenceIn(BaseModel):
@@ -53,11 +53,11 @@ class EvidenceIn(BaseModel):
 
 
 class ReviewIn(BaseModel):
-    """Evidence items replace the earlier bare-link list (unreleased P05 API, ADR-021)."""
+    """Evidence items replace the earlier bare-link list (ADR-021). The reviewer is the signed-in
+    account (ADR-023); a body that names a reviewer is rejected."""
 
     model_config = ConfigDict(extra="forbid")
     case_id: str = Field(pattern="^[0-9a-f]{64}$")
-    reviewer: str = Field(min_length=2, max_length=60)
     source_label: Literal[SOURCE_LABELS]
     industrial_subtype: Literal[SUBTYPES] | None = None
     certainty: Literal["HIGH", "MEDIUM", "LOW"]
@@ -74,7 +74,7 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
         CORSMiddleware,
         allow_origins=config.allowed_origins,
         allow_methods=["GET", "POST"],
-        allow_headers=["Content-Type", "X-Annotation-Token"],
+        allow_headers=["Content-Type", "Authorization"],
         expose_headers=["X-Request-ID"],
     )
 
@@ -324,25 +324,54 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
     def unavailable(request):
         return error_response(request, "DATA_UNAVAILABLE", "The stored-data service is not ready.")
 
+    def unauthorized(request):
+        return error_response(
+            request, "UNAUTHORIZED", "Sign in with your personal reviewer token.", 401
+        )
+
+    def signed_in(authorization: str | None) -> dict | None:
+        """The active reviewer account for this request (raises SQLAlchemyError/ValueError when
+        the database is unavailable or not configured)."""
+        token = bearer_token(authorization)
+        return None if token is None else authenticate(config, token)
+
     @app.get("/api/v1/annotation/case-sets")
     def case_sets(request: Request):
         try:
-            return {"case_sets": list_case_sets(config), "review_enabled": token_configured()}
-        except SQLAlchemyError:
+            return {
+                "case_sets": list_case_sets(config),
+                "sign_in": SIGN_IN,
+                "review_enabled": reviewers_configured(config),
+            }
+        except (SQLAlchemyError, ValueError):
             return unavailable(request)
+
+    @app.get("/api/v1/annotation/me")
+    def me(request: Request, authorization: Annotated[str | None, AUTHORIZATION] = None):
+        try:
+            reviewer = signed_in(authorization)
+        except (SQLAlchemyError, ValueError):
+            return unavailable(request)
+        if reviewer is None:
+            return unauthorized(request)
+        return {"name": reviewer["name"], "can_adjudicate": reviewer["can_adjudicate"],
+                "sign_in": SIGN_IN}  # fmt: skip
 
     @app.get("/api/v1/annotation/{case_set}/queue")
     def queue(
         request: Request,
         case_set: Annotated[str, CASE_SET],
-        reviewer: Annotated[str, REVIEWER],
+        authorization: Annotated[str | None, AUTHORIZATION] = None,
         limit: int = Query(default=20, ge=1, le=100),
     ):
         try:
-            return review_queue(config, case_set, reviewer.strip(), limit)
+            reviewer = signed_in(authorization)
+            if reviewer is None:
+                return unauthorized(request)
+            return review_queue(config, case_set, reviewer, limit)
         except IngestError:
             return error_response(request, "NOT_FOUND", "No case set with that name.", 404)
-        except SQLAlchemyError:
+        except (SQLAlchemyError, ValueError):
             return unavailable(request)
 
     @app.get("/api/v1/annotation/{case_set}/cases/{case_id}")
@@ -350,46 +379,44 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
         request: Request,
         case_set: Annotated[str, CASE_SET],
         case_id: Annotated[str, Path(pattern="^[0-9a-f]{64}$")],
+        authorization: Annotated[str | None, AUTHORIZATION] = None,
     ):
         try:
-            result = review_case(config, case_set, case_id)
+            reviewer = signed_in(authorization)
+            if reviewer is None:
+                return unauthorized(request)
+            result = review_case(config, case_set, case_id, reviewer)
         except IngestError:
             result = None
-        except SQLAlchemyError:
+        except (SQLAlchemyError, ValueError):
             return unavailable(request)
         if result is None:
             return error_response(request, "NOT_FOUND", "No such case in this case set.", 404)
         return result
-
-    def token_configured() -> bool:
-        return config.annotation_token is not None and bool(
-            config.annotation_token.get_secret_value()
-        )
 
     @app.post("/api/v1/annotation/{case_set}/reviews", status_code=201)
     def create_review(
         request: Request,
         case_set: Annotated[str, CASE_SET],
         review: ReviewIn,
-        x_annotation_token: Annotated[str | None, Header(max_length=200)] = None,
+        authorization: Annotated[str | None, AUTHORIZATION] = None,
     ):
-        if not token_configured():
-            return error_response(
-                request,
-                "ANNOTATION_DISABLED",
-                "Review submission is disabled until ANNOTATION_TOKEN is set on the server.",
-            )
-        expected = config.annotation_token.get_secret_value().encode()
-        if not x_annotation_token or not hmac.compare_digest(x_annotation_token.encode(), expected):
-            return error_response(
-                request, "UNAUTHORIZED", "A valid annotation token is required.", 401
-            )
+        if bearer_token(authorization) is None:
+            return unauthorized(request)
         try:
-            return submit_review(config, case_set, review.model_dump(mode="json"))
+            reviewer = signed_in(authorization)
+        except (SQLAlchemyError, ValueError):
+            return unavailable(request)
+        if reviewer is None:
+            return unauthorized(request)
+        try:
+            return submit_review(config, case_set, review.model_dump(mode="json"), reviewer)
         except IngestError:
             return error_response(request, "NOT_FOUND", "No case set with that name.", 404)
         except LookupError:
             return error_response(request, "NOT_FOUND", "No such case in this case set.", 404)
+        except PermissionError:
+            return unauthorized(request)
         except CaseSetSuperseded as error:
             return error_response(request, "CASE_SET_SUPERSEDED", str(error), 409)
         except ValueError as error:

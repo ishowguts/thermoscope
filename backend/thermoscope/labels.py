@@ -796,7 +796,9 @@ def external_links(lon: float, lat: float, day) -> list[dict]:
     ]
 
 
-def review_queue(settings: Settings, set_ref: str, reviewer: str, limit: int = 20) -> dict:
+def review_queue(settings: Settings, set_ref: str, reviewer: dict, limit: int = 20) -> dict:
+    """The signed-in reviewer's queue (reviewer-accounts-v1): cases they have not reviewed, and
+    disagreements to settle only if their account may adjudicate."""
     with database_engine(settings) as engine, engine.connect() as conn:
         set_id = case_set_id(conn, set_ref)
         labels = resolved_labels(conn, set_id)
@@ -805,7 +807,8 @@ def review_queue(settings: Settings, set_ref: str, reviewer: str, limit: int = 2
                 text("""
             SELECT c.id,c.split,c.region_id,c.as_of,c.review_slots,c.review_rank,
                 COUNT(r.id) FILTER (WHERE r.role='REVIEWER') AS reviews,
-                BOOL_OR(lower(r.reviewer)=lower(:who)) AS mine,
+                BOOL_OR(r.reviewer_id=CAST(:rid AS uuid) OR lower(r.reviewer)=lower(:who))
+                    AS mine,
                 COALESCE(BOOL_OR((f.features->>'history_complete')::boolean), false)
                     AS history_complete
             FROM label_cases c LEFT JOIN label_reviews r
@@ -816,7 +819,7 @@ def review_queue(settings: Settings, set_ref: str, reviewer: str, limit: int = 2
             GROUP BY c.id,c.split,c.region_id,c.as_of,c.review_slots,c.review_rank
             ORDER BY history_complete DESC,c.review_rank
         """),
-                {"s": set_id, "who": reviewer, "v": FEATURE_VERSION},
+                {"s": set_id, "rid": reviewer["id"], "who": reviewer["name"], "v": FEATURE_VERSION},
             )
             .mappings()
             .all()
@@ -842,20 +845,22 @@ def review_queue(settings: Settings, set_ref: str, reviewer: str, limit: int = 2
             review.append(item | {"role": "REVIEWER"})
     return {
         "case_set_id": str(set_id),
-        "reviewer": reviewer,
+        "reviewer": reviewer["name"],
+        "can_adjudicate": reviewer["can_adjudicate"],
         "superseded_by": newer,
         # Frozen split-interleaved rank, with cases whose 90-day history is complete first:
         # only those are eligible for evaluation under history-eligibility-v1 (ADR-021).
         "queue_order": "history-complete-first-v1",
-        "adjudication": adjudicate[:limit],
+        "adjudication": adjudicate[:limit] if reviewer["can_adjudicate"] else [],
         "review": review[:limit],
         "remaining_reviews": len(review),
         "remaining_adjudications": len(adjudicate),
     }
 
 
-def review_case(settings: Settings, set_ref: str, case_id: str) -> dict | None:
-    """Evidence for a blind review: no rule, weak/silver label or model output."""
+def review_case(settings: Settings, set_ref: str, case_id: str, reviewer: dict) -> dict | None:
+    """Evidence for a blind review: no rule, weak/silver label or model output. Earlier reviews
+    (without names) are shown only to a signed-in adjudicator who has not reviewed the case."""
     from thermoscope.context import (
         CONTEXT_RADIUS_M,
         find_candidates,
@@ -916,13 +921,17 @@ def review_case(settings: Settings, set_ref: str, case_id: str) -> dict | None:
             dict(r)
             for r in conn.execute(
                 text("""SELECT role,source_label,industrial_subtype,certainty,evidence,
-                    evidence_date,notes,reviewed_at FROM label_reviews
-                    WHERE case_set_id=:s AND case_id=:id ORDER BY reviewed_at,id"""),
-                {"s": set_id, "id": case_id},
+                    evidence_date,notes,reviewed_at,
+                    (reviewer_id=CAST(:rid AS uuid) OR lower(reviewer)=lower(:who)) AS mine
+                    FROM label_reviews WHERE case_set_id=:s AND case_id=:id
+                    ORDER BY reviewed_at,id"""),
+                {"s": set_id, "id": case_id, "rid": reviewer["id"], "who": reviewer["name"]},
             ).mappings()
         ]
     state = resolve_label(prior, case["review_slots"], None, None)
+    reviewed = any(r.pop("mine") for r in prior)
     pending = state["basis"] == "DISAGREEMENT_PENDING_ADJUDICATION"
+    may_adjudicate = pending and reviewer["can_adjudicate"] and not reviewed
     return {
         "case_id": case["id"],
         "case_set_id": str(set_id),
@@ -948,7 +957,8 @@ def review_case(settings: Settings, set_ref: str, case_id: str) -> dict | None:
         "reviews_recorded": len(prior),
         # Only an adjudicator sees earlier reviews (without reviewer names), to settle a
         # disagreement. Rule outputs, registry-derived labels and model scores are never shown.
-        "adjudication": {"needed": True, "earlier_reviews": prior} if pending else None,
+        "adjudication": {"needed": True, "earlier_reviews": prior} if may_adjudicate else None,
+        "reviewed_by_you": reviewed,
         "guidance": "Decide what kind of source most likely produced this heat: source identity "
         "only, never whether an accident happened. Only dated imagery near the episode (for "
         "example NASA Worldview true colour, Sentinel-2 or Landsat with its date) or an official "
@@ -1097,8 +1107,8 @@ def assess_evidence(items, started_at: datetime | None, as_of: datetime | None) 
     }
 
 
-def submit_review(settings: Settings, set_ref: str, payload: dict) -> dict:
-    reviewer = str(payload.get("reviewer", "")).strip()
+def submit_review(settings: Settings, set_ref: str, payload: dict, reviewer: dict) -> dict:
+    """Save one blind review for the signed-in account; the body never names the reviewer."""
     label = payload.get("source_label")
     certainty = payload.get("certainty")
     items = payload.get("evidence") or []
@@ -1106,8 +1116,6 @@ def submit_review(settings: Settings, set_ref: str, payload: dict) -> dict:
     location = payload.get("source_location")
     notes = (payload.get("notes") or "").strip()[:2000]
     case_id = str(payload.get("case_id", ""))
-    if not re.fullmatch(r"[\w .'-]{2,60}", reviewer):
-        raise ValueError("reviewer name is required (2–60 letters)")
     if label not in SOURCE_LABELS or certainty not in {"HIGH", "MEDIUM", "LOW"}:
         raise ValueError("choose a source label and a certainty")
     if subtype is not None and (label != "INDUSTRIAL" or subtype not in SUBTYPES):
@@ -1122,6 +1130,19 @@ def submit_review(settings: Settings, set_ref: str, payload: dict) -> dict:
     if label != "UNRESOLVED" and location is None:
         raise ValueError("say where the source is relative to the pixel area")
     with database_engine(settings) as engine, engine.begin() as conn:
+        # Re-read the account inside the transaction: a deactivation or a removed adjudicator
+        # right that commits first is honoured (the row stays locked until this review commits).
+        account = (
+            conn.execute(
+                text("""SELECT id,name,can_adjudicate FROM reviewers
+                    WHERE id=CAST(:r AS uuid) AND active FOR SHARE"""),
+                {"r": reviewer["id"]},
+            )
+            .mappings()
+            .first()
+        )
+        if account is None:
+            raise PermissionError("reviewer account is not active")
         set_id = case_set_id(conn, set_ref)
         conn.execute(text("SELECT 1 FROM case_sets WHERE id=:s FOR SHARE"), {"s": set_id})
         newer = superseded_by(conn, set_id)
@@ -1137,18 +1158,24 @@ def submit_review(settings: Settings, set_ref: str, payload: dict) -> dict:
         evidence = assess_evidence(items, case[1], case[2]) | {"source_location": location}
         existing = (
             conn.execute(
-                text("""SELECT reviewer,role,source_label,certainty,evidence FROM label_reviews
-                    WHERE case_set_id=:s AND case_id=:id ORDER BY reviewed_at,id"""),
+                text("""SELECT reviewer,reviewer_id,role,source_label,certainty,evidence
+                    FROM label_reviews WHERE case_set_id=:s AND case_id=:id
+                    ORDER BY reviewed_at,id"""),
                 {"s": set_id, "id": case_id},
             )
             .mappings()
             .all()
         )
-        if any(r["reviewer"].lower() == reviewer.lower() for r in existing):
-            raise ValueError("this reviewer has already reviewed the case")
+        if any(
+            r["reviewer_id"] == account["id"] or r["reviewer"].lower() == account["name"].lower()
+            for r in existing
+        ):
+            raise ValueError("you have already reviewed this case")
         reviewers = [r for r in existing if r["role"] == "REVIEWER"]
         state = resolve_label([dict(r) for r in existing], case[0], None, None)
         if state["basis"] == "DISAGREEMENT_PENDING_ADJUDICATION":
+            if not account["can_adjudicate"]:
+                raise ValueError("this case is waiting for an adjudicator")
             role = "ADJUDICATOR"
         elif len(reviewers) < case[0]:
             role = "REVIEWER"
@@ -1158,16 +1185,18 @@ def submit_review(settings: Settings, set_ref: str, payload: dict) -> dict:
         review_id = uuid4()
         conn.execute(
             text("""
-            INSERT INTO label_reviews (id,case_set_id,case_id,reviewer,role,source_label,
-                industrial_subtype,certainty,evidence,evidence_date,notes,blind,reviewed_at)
-            VALUES (:id,:s,:case,:reviewer,:role,:label,:subtype,:certainty,
+            INSERT INTO label_reviews (id,case_set_id,case_id,reviewer,reviewer_id,role,
+                source_label,industrial_subtype,certainty,evidence,evidence_date,notes,blind,
+                reviewed_at)
+            VALUES (:id,:s,:case,:reviewer,:reviewer_id,:role,:label,:subtype,:certainty,
                 CAST(:evidence AS jsonb),:evidence_date,:notes,true,:now)
         """),
             {
                 "id": review_id,
                 "s": set_id,
                 "case": case_id,
-                "reviewer": reviewer,
+                "reviewer": account["name"],
+                "reviewer_id": account["id"],
                 "role": role,
                 "label": label,
                 "subtype": subtype,

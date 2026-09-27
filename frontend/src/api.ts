@@ -87,6 +87,30 @@ export async function readApi<T>(url: string, signal: AbortSignal): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+/** Thrown when the personal reviewer token is missing, wrong, rotated or deactivated. */
+export class SignInRequired extends Error {}
+
+/** Reads a reviewer-only endpoint with the signed-in reviewer's personal token. */
+export async function readAsReviewer<T>(
+  url: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  const response = await fetch(url, {
+    signal,
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 401)
+    throw new SignInRequired("Your reviewer sign-in was not accepted.");
+  if (!response.ok)
+    throw new Error(
+      "Stored data is unavailable. Check the local API and database, then reload.",
+    );
+  return response.json() as Promise<T>;
+}
+
+export type Reviewer = { name: string; can_adjudicate: boolean };
+
 export function utc(value: string | null | undefined): string {
   if (!value) return "Not available";
   return (
@@ -415,6 +439,7 @@ export type QueueItem = {
 export type ReviewQueue = {
   case_set_id: string;
   reviewer: string;
+  can_adjudicate: boolean;
   superseded_by: string | null;
   queue_order: string;
   adjudication: QueueItem[];
@@ -475,6 +500,7 @@ export type ReviewCase = {
   links: { label: string; url: string }[];
   blind: boolean;
   reviews_recorded: number;
+  reviewed_by_you: boolean;
   adjudication: { needed: boolean; earlier_reviews: EarlierReview[] } | null;
   guidance: string;
   evidence_policy: {
@@ -524,7 +550,7 @@ export async function postReview(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Annotation-Token": token,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(body),
     },
@@ -532,7 +558,7 @@ export async function postReview(
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401)
-      throw new Error("The review token was not accepted.");
+      throw new SignInRequired("Your reviewer sign-in was not accepted.");
     if (response.status === 422 && payload.code === "INVALID_QUERY")
       throw new Error(
         "Check the links, types, dates and notes, then try again.",

@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
     database_url: SecretStr | None = None
     firms_map_key: SecretStr | None = None
-    # Shared secret for submitting label reviews; reviews are disabled while it is unset.
-    annotation_token: SecretStr | None = None
+    # Reviewers sign in with personal accounts (reviewer-accounts-v1, ADR-023). The former shared
+    # ANNOTATION_TOKEN is no longer read; an old .env entry is ignored.
     # A reviewer-facing server: rule assessments and timelines are withheld so blind reviewers
     # cannot look up the automated answer (P05 review integrity).
     review_only: bool = False

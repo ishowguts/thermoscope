@@ -8,8 +8,10 @@ import {
   facilityType,
   landCoverMix,
   measurement,
+  SignInRequired,
   postReview,
   readApi,
+  readAsReviewer,
   utc,
 } from "./api";
 import type {
@@ -18,7 +20,11 @@ import type {
   QueueItem,
   ReviewCase,
   ReviewQueue,
+  Reviewer,
 } from "./api";
+
+// Kept for this browser tab only (cleared when the tab closes or on sign-out).
+const TOKEN_KEY = "thermoscope.reviewer-token";
 
 type EvidenceRow = {
   url: string;
@@ -331,14 +337,14 @@ function ReviewForm({
   data,
   reviewer,
   token,
-  onToken,
   onSaved,
+  onSignedOut,
 }: {
   data: ReviewCase;
-  reviewer: string;
+  reviewer: Reviewer;
   token: string;
-  onToken: (value: string) => void;
   onSaved: (message: string) => void;
+  onSignedOut: () => void;
 }) {
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [error, setError] = useState("");
@@ -390,7 +396,6 @@ function ReviewForm({
     try {
       const saved = await postReview(data.case_set_id, token, {
         case_id: data.case_id,
-        reviewer,
         source_label: draft.source_label,
         industrial_subtype:
           draft.source_label === "INDUSTRIAL" && draft.industrial_subtype
@@ -420,7 +425,8 @@ function ReviewForm({
           : "Review saved. The next case is open. ") + tier,
       );
     } catch (reason) {
-      setError((reason as Error).message);
+      if (reason instanceof SignInRequired) onSignedOut();
+      else setError((reason as Error).message);
     } finally {
       setSaving(false);
     }
@@ -564,26 +570,17 @@ function ReviewForm({
           onChange={(e) => set({ notes: e.target.value })}
         />
       </label>
-      <label>
-        Review token
-        <input
-          type="password"
-          autoComplete="off"
-          value={token}
-          onChange={(e) => onToken(e.target.value)}
-          placeholder="Ask the team lead"
-        />
-      </label>
       {error && (
         <div className="notice error" role="alert">
           {error}
         </div>
       )}
-      <button className="primary" disabled={saving || !token}>
-        {saving ? "Saving…" : "Save review"}
+      <button className="primary" disabled={saving}>
+        {saving ? "Saving…" : `Save review as ${reviewer.name}`}
       </button>
       <p className="help">
-        Reviews are append-only. Save only what the evidence supports.
+        Reviews are append-only and recorded under your account. Save only what
+        the evidence supports.
       </p>
     </form>
   );
@@ -593,9 +590,10 @@ export function ReviewPage() {
   const [sets, setSets] = useState<CaseSet[] | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [setName, setSetName] = useState("");
-  const [nameInput, setNameInput] = useState("");
-  const [reviewer, setReviewer] = useState("");
+  const [tokenInput, setTokenInput] = useState("");
   const [token, setToken] = useState("");
+  const [reviewer, setReviewer] = useState<Reviewer | null>(null);
+  const [signingIn, setSigningIn] = useState(false);
   const [queue, setQueue] = useState<ReviewQueue | null>(null);
   const [summary, setSummary] = useState<LabelSummary | null>(null);
   const [caseId, setCaseId] = useState<string | null>(null);
@@ -622,13 +620,75 @@ export function ReviewPage() {
     return () => controller.abort();
   }, []);
 
+  const signOut = useCallback((reason = "") => {
+    setToken("");
+    setReviewer(null);
+    setQueue(null);
+    setCaseId(null);
+    setData(null);
+    setMessage("");
+    setError(reason);
+    try {
+      sessionStorage.removeItem(TOKEN_KEY);
+    } catch {
+      /* storage unavailable: nothing to clear */
+    }
+  }, []);
+  const expired = useCallback(
+    () =>
+      signOut(
+        "Your sign-in is no longer valid (token rotated or account deactivated). Sign in again.",
+      ),
+    [signOut],
+  );
+
+  const signIn = useCallback(async (candidate: string, remember: boolean) => {
+    setSigningIn(true);
+    setError("");
+    try {
+      const who = await readAsReviewer<Reviewer>(
+        "/api/v1/annotation/me",
+        candidate,
+      );
+      setToken(candidate);
+      setReviewer(who);
+      setTokenInput("");
+      if (remember) {
+        try {
+          sessionStorage.setItem(TOKEN_KEY, candidate);
+        } catch {
+          /* storage unavailable: stay signed in for this page only */
+        }
+      }
+    } catch (reason) {
+      setError(
+        reason instanceof SignInRequired
+          ? "That token was not accepted. Use the personal token the project owner gave you."
+          : (reason as Error).message,
+      );
+    } finally {
+      setSigningIn(false);
+    }
+  }, []);
+
   useEffect(() => {
-    if (!setName || !reviewer) return;
+    let saved: string | null = null;
+    try {
+      saved = sessionStorage.getItem(TOKEN_KEY);
+    } catch {
+      saved = null;
+    }
+    if (saved) void signIn(saved, false);
+  }, [signIn]);
+
+  useEffect(() => {
+    if (!setName || !reviewer || !token) return;
     const controller = new AbortController();
     const base = `/api/v1/annotation/${encodeURIComponent(setName)}`;
     Promise.all([
-      readApi<ReviewQueue>(
-        `${base}/queue?reviewer=${encodeURIComponent(reviewer)}&limit=30`,
+      readAsReviewer<ReviewQueue>(
+        `${base}/queue?limit=30`,
+        token,
         controller.signal,
       ),
       readApi<LabelSummary>(`${base}/summary`, controller.signal),
@@ -639,28 +699,31 @@ export function ReviewPage() {
         const first = q.adjudication[0] ?? q.review[0];
         setCaseId(first ? first.case_id : null);
       })
-      .catch(() => {
-        if (!controller.signal.aborted)
-          setError("The review queue could not be loaded.");
+      .catch((reason) => {
+        if (controller.signal.aborted) return;
+        if (reason instanceof SignInRequired) expired();
+        else setError("The review queue could not be loaded.");
       });
     return () => controller.abort();
-  }, [setName, reviewer, tick]);
+  }, [setName, reviewer, token, tick, expired]);
 
   useEffect(() => {
     setData(null);
-    if (!caseId || !setName) return;
+    if (!caseId || !setName || !token) return;
     const controller = new AbortController();
-    readApi<ReviewCase>(
+    readAsReviewer<ReviewCase>(
       `/api/v1/annotation/${encodeURIComponent(setName)}/cases/${caseId}`,
+      token,
       controller.signal,
     )
       .then(setData)
-      .catch(() => {
-        if (!controller.signal.aborted)
-          setError("This case could not be loaded.");
+      .catch((reason) => {
+        if (controller.signal.aborted) return;
+        if (reason instanceof SignInRequired) expired();
+        else setError("This case could not be loaded.");
       });
     return () => controller.abort();
-  }, [caseId, setName]);
+  }, [caseId, setName, token, expired]);
 
   const saved = useCallback((text: string) => {
     setMessage(text);
@@ -697,8 +760,9 @@ export function ReviewPage() {
       )}
       {sets && !enabled && (
         <div className="notice" role="status">
-          Saving reviews is switched off on this server. Set ANNOTATION_TOKEN in
-          the server’s .env to enable it. You can still browse cases.
+          No reviewer accounts exist on this server yet. The project owner adds
+          one per person with <code>make ml ARGS="add-reviewer --name …"</code>{" "}
+          and passes each person their own token privately.
         </div>
       )}
       {!reviewer ? (
@@ -706,9 +770,13 @@ export function ReviewPage() {
           className="filters"
           onSubmit={(e) => {
             e.preventDefault();
-            const name = nameInput.trim();
-            if (/^[\w .'-]{2,60}$/.test(name)) setReviewer(name);
-            else setError("Use 2–60 letters, digits, spaces, . ' or -.");
+            const candidate = tokenInput.trim();
+            if (/^tsr_[A-Za-z0-9_-]{43}$/.test(candidate))
+              void signIn(candidate, true);
+            else
+              setError(
+                "Paste the whole personal token (it starts with tsr_ and has 47 characters).",
+              );
           }}
         >
           <label>
@@ -727,19 +795,21 @@ export function ReviewPage() {
             </select>
           </label>
           <label>
-            Your name
+            Your personal reviewer token
             <input
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-              placeholder="e.g. Priya S"
+              type="password"
+              autoComplete="off"
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+              placeholder="tsr_…"
               maxLength={60}
             />
           </label>
-          <button className="primary" disabled={!setName}>
-            Start reviewing
+          <button className="primary" disabled={!setName || signingIn}>
+            {signingIn ? "Signing in…" : "Sign in"}
           </button>
           <span className="filter-hint">
-            Your name is stored with each review
+            Reviews are recorded under your account. Never share your token.
           </span>
         </form>
       ) : (
@@ -787,9 +857,12 @@ export function ReviewPage() {
           <section className="review-workspace" aria-label="Review workbench">
             <div className="list-panel">
               <div className="panel-heading">
-                <h2>Queue for {reviewer}</h2>
-                <button className="quiet" onClick={() => setReviewer("")}>
-                  Switch
+                <h2>
+                  Queue for {reviewer.name}
+                  {reviewer.can_adjudicate ? " · adjudicator" : ""}
+                </h2>
+                <button className="quiet" onClick={() => signOut()}>
+                  Sign out
                 </button>
               </div>
               <div className="observations">
@@ -817,7 +890,7 @@ export function ReviewPage() {
               </div>
               <p className="help queue-note">
                 {queue
-                  ? `${queue.remaining_reviews.toLocaleString("en-GB")} cases open for review · ${queue.remaining_adjudications} awaiting adjudication. Test cases need two people.`
+                  ? `${queue.remaining_reviews.toLocaleString("en-GB")} cases open for review · ${queue.remaining_adjudications} awaiting adjudication${queue.can_adjudicate ? "" : " (by an adjudicator)"}. Test cases need two people.`
                   : "Loading queue…"}
               </p>
             </div>
@@ -837,8 +910,8 @@ export function ReviewPage() {
                   data={data}
                   reviewer={reviewer}
                   token={token}
-                  onToken={setToken}
                   onSaved={saved}
+                  onSignedOut={expired}
                 />
               </div>
             )}

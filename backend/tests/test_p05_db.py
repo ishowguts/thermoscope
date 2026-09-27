@@ -1,6 +1,6 @@
 """P05 against a real disposable PostGIS database: registry import, frozen case set, blind
-review workflow with adjudication, features, and training that refuses to report without
-reviewed test labels."""
+review workflow with personal reviewer accounts and adjudication, features, and training that
+refuses to report without reviewed test labels."""
 
 import hashlib
 import json
@@ -26,10 +26,16 @@ from thermoscope.labels import (
 )
 from thermoscope.main import create_app
 from thermoscope.ml import compute_case_features, train_and_evaluate
+from thermoscope.reviewers import (
+    add_reviewer,
+    deactivate,
+    list_reviewers,
+    rotate_token,
+    token_sha256,
+)
 
 pytestmark = pytest.mark.integration
 
-TOKEN = "fixture-review-token"
 URL = "https://worldview.earthdata.nasa.gov/?v=69.5,22.2,69.7,22.4&t=2026-01-02"
 IMAGERY = {"url": URL, "kind": "DATED_IMAGERY", "observed_on": "2026-01-02",
            "licence": "NASA EOSDIS open data"}  # fmt: skip
@@ -45,8 +51,7 @@ GPPD_CSV = (
 @pytest.fixture
 def configured(test_database, tmp_path):
     command.upgrade(Config("alembic.ini"), "head")
-    return Settings(object_store_local_path=tmp_path / "objects", firms_map_key=None,
-                    annotation_token=TOKEN)  # fmt: skip
+    return Settings(object_store_local_path=tmp_path / "objects", firms_map_key=None)
 
 
 def twelve_sites():
@@ -110,47 +115,93 @@ def test_case_set_reviews_features_and_training_gate(configured):
     client = TestClient(create_app(configured))
     base = "/api/v1/annotation/fixture-set"
     sets = client.get("/api/v1/annotation/case-sets").json()
-    assert sets["review_enabled"] and sets["case_sets"][0]["name"] == "fixture-set"
+    assert not sets["review_enabled"]  # no reviewer accounts yet
+    assert sets["case_sets"][0]["name"] == "fixture-set"
     assert sets["case_sets"][1]["superseded_by"] == "fixture-set"
 
-    queue = client.get(f"{base}/queue", params={"reviewer": "Asha"}).json()
+    # Personal accounts: the server keeps only a hash of each token.
+    tokens = {}
+    for name, adjudicator in (("Asha", False), ("Ben", False), ("Dev", False), ("Chen", True)):
+        account, tokens[name] = add_reviewer(configured, name, adjudicator)
+        assert account["name"] == name and "token" not in account
+    with pytest.raises(ValueError, match="already exists"):
+        add_reviewer(configured, "  asha ")
+    assert client.get("/api/v1/annotation/case-sets").json()["review_enabled"]
+
+    def auth(who):
+        return {"Authorization": f"Bearer {tokens[who]}"}
+
+    me = client.get("/api/v1/annotation/me", headers=auth("Chen")).json()
+    assert me == {"name": "Chen", "can_adjudicate": True, "sign_in": "reviewer-accounts-v1"}
+    assert client.get(f"{base}/queue").status_code == 401
+
+    queue = client.get(f"{base}/queue", headers=auth("Asha")).json()
+    assert queue["reviewer"] == "Asha" and not queue["can_adjudicate"]
     first = queue["review"][0]
     assert first["split"] == "TEST" and first["needs"] == 2
     case_id = first["case_id"]
+    case_url = f"{base}/cases/{case_id}"
 
-    case = client.get(f"{base}/cases/{case_id}")
+    assert client.get(case_url).status_code == 401
+    case = client.get(case_url, headers=auth("Asha"))
     assert case.status_code == 200
     blind = case.json()
-    assert blind["blind"] and blind["adjudication"] is None
+    assert blind["blind"] and blind["adjudication"] is None and not blind["reviewed_by_you"]
     for hidden in ("weak", "silver", "rule", "p_industrial", "probability", "score"):
         assert hidden not in case.text.lower(), hidden
     assert blind["links"][0]["url"].startswith("https://worldview.earthdata.nasa.gov/")
 
-    def post(who, label, evidence=(IMAGERY,), token=TOKEN, where=base):
-        payload = {"case_id": case_id, "reviewer": who, "source_label": label,
-                   "certainty": "MEDIUM", "source_location": "INSIDE_PIXEL_AREA",
-                   "evidence": list(evidence)}  # fmt: skip
+    def post(who, label, evidence=(IMAGERY,), where=base, headers=None):
+        payload = {"case_id": case_id, "source_label": label, "certainty": "MEDIUM",
+                   "source_location": "INSIDE_PIXEL_AREA", "evidence": list(evidence)}  # fmt: skip
         return client.post(f"{where}/reviews", json=payload,
-                           headers={"X-Annotation-Token": token})  # fmt: skip
+                           headers=auth(who) if headers is None else headers)  # fmt: skip
 
     superseded = post("Asha", "INDUSTRIAL", where="/api/v1/annotation/fixture-v1")
     assert superseded.status_code == 409 and superseded.json()["code"] == "CASE_SET_SUPERSEDED"
-    assert post("Asha", "INDUSTRIAL", token="wrong").status_code == 401
+    forged = {"Authorization": "Bearer tsr_" + "B" * 43}
+    assert post("Asha", "INDUSTRIAL", headers=forged).status_code == 401
+    assert post("Asha", "INDUSTRIAL", headers={}).status_code == 401
     mismatch = post("Asha", "INDUSTRIAL", evidence=(IMAGERY | {"observed_on": "2026-01-01"},))
     assert mismatch.status_code == 422  # imagery date must match the Worldview link
     first_review = post("Asha", "INDUSTRIAL").json()
     assert first_review["role"] == "REVIEWER" and first_review["independent_evidence"]
-    assert post("asha", "OTHER").status_code == 422  # same person, any case
+    assert post("Asha", "OTHER").status_code == 422  # one review per account per case
     assert post("Ben", "AGRICULTURAL_BURN").json()["role"] == "REVIEWER"
 
-    # Second reviewer never saw the first; the disagreement goes to an adjudicator.
-    chen = client.get(f"{base}/queue", params={"reviewer": "Chen"}).json()
+    # The disagreement is settled only by an adjudicator account that did not review the case.
+    dev = client.get(f"{base}/queue", headers=auth("Dev")).json()
+    assert dev["adjudication"] == [] and dev["remaining_adjudications"] == 1
+    assert client.get(case_url, headers=auth("Dev")).json()["adjudication"] is None
+    waiting = post("Dev", "INDUSTRIAL")
+    assert waiting.status_code == 422 and "adjudicator" in waiting.json()["message"]
+    asha_view = client.get(case_url, headers=auth("Asha")).json()
+    assert asha_view["adjudication"] is None and asha_view["reviewed_by_you"]
+    chen = client.get(f"{base}/queue", headers=auth("Chen")).json()
     assert [i["case_id"] for i in chen["adjudication"]] == [case_id]
-    detail = client.get(f"{base}/cases/{case_id}").json()["adjudication"]
+    detail = client.get(case_url, headers=auth("Chen")).json()["adjudication"]
     assert detail["needed"] and len(detail["earlier_reviews"]) == 2
     assert "reviewer" not in json.dumps(detail["earlier_reviews"])
+    assert "Asha" not in json.dumps(detail) and "Ben" not in json.dumps(detail)
     assert post("Chen", "AGRICULTURAL_BURN").json()["role"] == "ADJUDICATOR"
     assert post("Dev", "INDUSTRIAL").status_code == 422  # nothing left to review
+
+    # Rotation replaces a token; deactivation locks the account out; accounts are listed with
+    # their review counts, never their tokens.
+    old = tokens["Ben"]
+    tokens["Ben"] = rotate_token(configured, "ben")
+    assert client.get("/api/v1/annotation/me",
+                      headers={"Authorization": f"Bearer {old}"}).status_code == 401  # fmt: skip
+    assert client.get("/api/v1/annotation/me", headers=auth("Ben")).status_code == 200
+    deactivate(configured, "Ben")
+    assert client.get("/api/v1/annotation/me", headers=auth("Ben")).status_code == 401
+    with pytest.raises(LookupError):
+        deactivate(configured, "Nobody")
+    listed = list_reviewers(configured)
+    assert {r["name"]: (r["reviews"], r["active"]) for r in listed} == {
+        "Asha": (1, True), "Ben": (1, False), "Chen": (1, True), "Dev": (0, True),
+    }  # fmt: skip
+    assert not any(t in json.dumps(listed, default=str) for t in tokens.values())
 
     summary = label_summary(configured, "fixture-set")
     assert summary["gold_test_labels"] == {"AGRICULTURAL_BURN": 1}
@@ -159,9 +210,17 @@ def test_case_set_reviews_features_and_training_gate(configured):
 
     with database_engine(configured) as engine, engine.connect() as conn:
         stored = conn.execute(
-            text("SELECT role,blind,evidence FROM label_reviews ORDER BY reviewed_at")
+            text("""SELECT l.role,l.blind,l.evidence,l.reviewer,a.name AS account
+                FROM label_reviews l JOIN reviewers a ON a.id=l.reviewer_id
+                ORDER BY l.reviewed_at""")
         ).all()
+        hashes = set(conn.execute(text("SELECT token_sha256 FROM reviewers")).scalars())
+        dump = json.dumps([list(r) for r in conn.execute(text("SELECT * FROM reviewers"))],
+                          default=str)  # fmt: skip
     assert [r.role for r in stored] == ["REVIEWER", "REVIEWER", "ADJUDICATOR"]
+    assert [r.reviewer for r in stored] == [r.account for r in stored] == ["Asha", "Ben", "Chen"]
+    assert token_sha256(tokens["Asha"]) in hashes
+    assert not any(t in dump for t in tokens.values())  # only hashes are stored
     assert all(r.blind for r in stored)
     assert stored[0].evidence["policy"] == "evidence-policy-v1"
     assert stored[0].evidence["items"][0]["licence"] == "NASA EOSDIS open data"
@@ -179,14 +238,25 @@ def test_case_set_reviews_features_and_training_gate(configured):
         with pytest.raises(DBAPIError, match="immutable"):
             with database_engine(configured) as engine, engine.begin() as conn:
                 conn.execute(text(statement))
-    with pytest.raises(IntegrityError):  # one review per person per case, any letter case
-        with database_engine(configured) as engine, engine.begin() as conn:
-            conn.execute(
-                text("""INSERT INTO label_reviews (id,case_set_id,case_id,reviewer,role,
-                    source_label,certainty,evidence,blind,reviewed_at)
-                    SELECT gen_random_uuid(),case_set_id,case_id,'ASHA','ADJUDICATOR',
-                        'OTHER','LOW','{}'::jsonb,true,now() FROM label_reviews LIMIT 1""")
-            )
+    for statement, message in (
+        ("DELETE FROM reviewers", "never deleted"),
+        ("TRUNCATE reviewers CASCADE", "never deleted"),
+        ("UPDATE reviewers SET name='Mallory' WHERE name='Asha'", "immutable"),
+    ):
+        with pytest.raises(DBAPIError, match=message):
+            with database_engine(configured) as engine, engine.begin() as conn:
+                conn.execute(text(statement))
+    insert = """INSERT INTO label_reviews (id,case_set_id,case_id,reviewer,reviewer_id,role,
+        source_label,certainty,evidence,blind,reviewed_at)
+        SELECT gen_random_uuid(),case_set_id,case_id,:name,{account},'ADJUDICATOR',
+            'OTHER','LOW','{{}}'::jsonb,true,now() FROM label_reviews WHERE reviewer='Asha'"""
+    for name, account, constraint in (
+        ("ASHA", "reviewer_id", "ux_label_reviews"),  # one review per person, any letter case
+        ("Zed", "NULL", "label_reviews_signed_in"),  # every new review names an account
+    ):
+        with pytest.raises(IntegrityError, match=constraint):
+            with database_engine(configured) as engine, engine.begin() as conn:
+                conn.execute(text(insert.format(account=account)), {"name": name})
     assert (
         case_set_fingerprint(configured, "fixture-set")["splits_sha256"] == (after["splits_sha256"])
     )

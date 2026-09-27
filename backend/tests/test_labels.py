@@ -17,6 +17,7 @@ from thermoscope.labels import (
     union_groups,
 )
 from thermoscope.main import create_app
+from thermoscope.reviewers import TOKEN, _issue, bearer_token, token_sha256
 
 URL = "https://worldview.earthdata.nasa.gov/?v=1,2,3,4&t=2026-05-01"
 START = datetime(2026, 5, 1, 8, tzinfo=UTC)
@@ -206,11 +207,10 @@ def test_kappa():
 @pytest.mark.parametrize(
     ("payload", "message"),
     [
-        ({"reviewer": "x"}, "reviewer"),
-        ({"reviewer": "Asha", "source_label": "FIRE", "certainty": "HIGH"}, "source label"),
+        ({"source_label": "INDUSTRIAL"}, "certainty"),
+        ({"source_label": "FIRE", "certainty": "HIGH"}, "source label"),
         (
             {
-                "reviewer": "Asha",
                 "source_label": "OTHER",
                 "certainty": "HIGH",
                 "industrial_subtype": "GAS_FLARE",
@@ -220,17 +220,15 @@ def test_kappa():
         ),  # fmt: skip
         (
             {
-                "reviewer": "Asha",
                 "source_label": "OTHER",
                 "certainty": "HIGH",
                 "evidence": [{"url": "javascript:alert(1)", "kind": "OTHER"}],
             },
             "links",
         ),  # fmt: skip
-        ({"reviewer": "Asha", "source_label": "OTHER", "certainty": "HIGH"}, "evidence link"),
+        ({"source_label": "OTHER", "certainty": "HIGH"}, "evidence link"),
         (
             {
-                "reviewer": "Asha",
                 "source_label": "OTHER",
                 "certainty": "HIGH",
                 "evidence": [IMAGERY],
@@ -239,7 +237,6 @@ def test_kappa():
         ),  # fmt: skip
         (
             {
-                "reviewer": "Asha",
                 "source_label": "OTHER",
                 "certainty": "HIGH",
                 "evidence": [{"url": URL}],
@@ -251,41 +248,61 @@ def test_kappa():
 def test_submit_review_validates_before_touching_the_database(payload, message):
     settings = Settings(_env_file=None, database_url=None)
     with pytest.raises(ValueError, match=message):
-        submit_review(settings, "any", payload | {"case_id": "0" * 64})
+        submit_review(settings, "any", payload | {"case_id": "0" * 64}, ACCOUNT)
+
+
+ACCOUNT = {"id": "00000000-0000-0000-0000-000000000001", "name": "Asha", "can_adjudicate": False}
+WELL_FORMED = "tsr_" + "A" * 43
 
 
 def body():
-    return {"case_id": "a" * 64, "reviewer": "Asha", "source_label": "INDUSTRIAL",
-            "certainty": "HIGH", "source_location": "INSIDE_PIXEL_AREA",
-            "evidence": [IMAGERY]}  # fmt: skip
+    return {"case_id": "a" * 64, "source_label": "INDUSTRIAL", "certainty": "HIGH",
+            "source_location": "INSIDE_PIXEL_AREA", "evidence": [IMAGERY]}  # fmt: skip
 
 
-def test_review_submission_is_disabled_without_a_token():
+def test_bearer_token_accepts_only_the_personal_token_format():
+    assert bearer_token(f"Bearer {WELL_FORMED}") == WELL_FORMED
+    assert bearer_token(f"bearer  {WELL_FORMED} ") == WELL_FORMED
+    for header in (None, "", WELL_FORMED, f"Basic {WELL_FORMED}", "Bearer shared-secret",
+                   f"Bearer {WELL_FORMED}x", "Bearer tsr_short"):  # fmt: skip
+        assert bearer_token(header) is None, header
+    token, digest = _issue()
+    assert TOKEN.fullmatch(token) and digest == token_sha256(token) and token not in digest
+
+
+def test_review_endpoints_require_a_personal_sign_in():
     client = TestClient(create_app(Settings(_env_file=None, database_url=None)))
-    response = client.post("/api/v1/annotation/pilot-set/reviews", json=body())
-    assert response.status_code == 503
-    assert response.json()["code"] == "ANNOTATION_DISABLED"
+    base = "/api/v1/annotation/pilot-set"
+    requests = [
+        ("get", "/api/v1/annotation/me", None),
+        ("get", f"{base}/queue", None),
+        ("get", f"{base}/cases/{'a' * 64}", None),
+        ("post", f"{base}/reviews", body()),
+    ]
+    for method, url, payload in requests:
+        for headers in ({}, {"Authorization": "Bearer shared-secret"},
+                        {"X-Annotation-Token": WELL_FORMED}):  # fmt: skip
+            response = client.request(method, url, json=payload, headers=headers)
+            assert response.status_code == 401, (url, headers)
+            assert response.json()["code"] == "UNAUTHORIZED"
+        # A well-formed token needs the account database; without it the API says so (503).
+        signed = client.request(method, url, json=payload,
+                                headers={"Authorization": f"Bearer {WELL_FORMED}"})  # fmt: skip
+        assert signed.status_code == 503 and WELL_FORMED not in signed.text
 
 
-def test_review_submission_rejects_a_wrong_token_and_bad_bodies():
-    settings = Settings(_env_file=None, database_url=None, annotation_token="correct-token")
-    client = TestClient(create_app(settings))
+def test_review_bodies_are_validated_and_cannot_name_a_reviewer():
+    client = TestClient(create_app(Settings(_env_file=None, database_url=None)))
     url = "/api/v1/annotation/pilot-set/reviews"
-    wrong = client.post(url, json=body(), headers={"X-Annotation-Token": "nope"})
-    assert wrong.status_code == 401 and "correct-token" not in wrong.text
-    assert client.post(url, json=body()).status_code == 401
-    bad = client.post(url, json=body() | {"source_label": "FIRE"},
-                      headers={"X-Annotation-Token": "correct-token"})  # fmt: skip
-    assert bad.status_code == 422
-    extra = client.post(url, json=body() | {"model_score": 0.9},
-                        headers={"X-Annotation-Token": "correct-token"})  # fmt: skip
-    assert extra.status_code == 422
-    bare = client.post(url, json=body() | {"evidence": [URL]},
-                       headers={"X-Annotation-Token": "correct-token"})  # fmt: skip
-    assert bare.status_code == 422  # a bare link without a type is no longer accepted
-    claimed = client.post(url, json=body() | {"evidence": [IMAGERY | {"independent": True}]},
-                          headers={"X-Annotation-Token": "correct-token"})  # fmt: skip
-    assert claimed.status_code == 422  # clients cannot declare their evidence independent
+    headers = {"Authorization": f"Bearer {WELL_FORMED}"}
+    for bad in (
+        body() | {"reviewer": "Somebody Else"},  # identity comes from the account only
+        body() | {"source_label": "FIRE"},
+        body() | {"model_score": 0.9},
+        body() | {"evidence": [URL]},  # a bare link without a type is no longer accepted
+        body() | {"evidence": [IMAGERY | {"independent": True}]},  # clients cannot claim it
+    ):
+        assert client.post(url, json=bad, headers=headers).status_code == 422
 
 
 def test_review_only_server_withholds_automated_assessments():
@@ -301,11 +318,11 @@ def test_review_only_server_withholds_automated_assessments():
 def test_cors_allows_review_posts_from_the_workbench_only():
     client = TestClient(create_app(Settings(_env_file=None, database_url=None)))
     headers = {"Access-Control-Request-Method": "POST",
-               "Access-Control-Request-Headers": "content-type,x-annotation-token"}  # fmt: skip
+               "Access-Control-Request-Headers": "content-type,authorization"}  # fmt: skip
     ok = client.options("/api/v1/annotation/pilot-set/reviews",
                         headers=headers | {"Origin": "http://127.0.0.1:5173"})  # fmt: skip
     assert ok.status_code == 200
-    assert "x-annotation-token" in ok.headers["access-control-allow-headers"].lower()
+    assert "authorization" in ok.headers["access-control-allow-headers"].lower()
     other = client.options("/api/v1/annotation/pilot-set/reviews",
                            headers=headers | {"Origin": "https://example.org"})  # fmt: skip
     assert other.status_code == 400
