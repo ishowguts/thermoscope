@@ -238,3 +238,53 @@ Fetched `origin/main` `52c91f0` and merged it into `p05-model` (`09fb77b`; no re
 | Secret scan | Workspace database password, Postgres password and both review tokens: zero matches in every commit | The Mac's FIRMS key never entered the workspace |
 
 Open: human reviews; NOAA-20 SP backfill 2025-12-30 → 2026-03-29 for complete history; Mac verification; independent acceptance.
+
+## 27 September 2026 approximately 22:19 IST — authenticated portal inspection
+
+User completed login personally. Browser read-only navigation verified team identity and six registered members, empty Draft Idea List and View Submitted Idea tables, SIH26162 / NTRO / Software / Disaster Management at 140/500, and the matching blank submission form. No separate nomination-status badge appeared; successful form access is the evidence, not a claim to have audited the SPOC backend.
+
+Observed form: title maximum 100 characters; description 50,000; abstract/summary 10,000; PDF up to 10 MB; optional YouTube link; technology dropdown including the combined AI/ML, Cloud Computing, Blockchain option; Save as Draft. No dedicated GitHub/website field was visible. Draft list states two ideas maximum and warns against changes after submission; form warns against post-submit changes over email/call. Actual final-submit controls/editing were not tested because no draft exists.
+
+Sources: `/teamDetail`, `/teamDraftIdeas`, `/teamIdeas`, signed-in PS search, and [SIH26162 form](https://www.sih.gov.in/participate/MjYxNjI=). Only nonsensitive constraints and already-authorized team identity were recorded; no passwords or member contact data saved. No form changes, uploads, draft save or final submission. Clock check: 16:48:58 UTC. Canonical field checklist: `SUBMISSION_DETAILS.md`.
+
+## 27–28 September 2026 — prepared six-slide submission package
+
+New files were prepared outside Git in workspace `output/submission/`, leaving the original PPT and Canva unchanged. Base main: `52c91f0`; application implementation remains reviewed P03/P04 `b87fa86`. Existing local API/Vite/PostGIS were started for actual browser screenshots without changing code or importing more data. Screenshot subjects: the Jamnagar refinery candidate (2.17 MW, observation `903e66bf0e04ceebdc6ffd140c54c17a70d6803140523bb44be86e3694660f80`) and its retrospective rules/history with seven earlier active days. Human source confirmation remains pending.
+
+| Check | Result | Boundary |
+| --- | --- | --- |
+| Official template import | Six content slides kept, instruction page omitted; official headings/artwork/dimensions retained | Original deck preserved |
+| ArtifactTool finalization | Package/layout checks pass with zero findings/warnings; six-slide re-import passes | Not native Microsoft PowerPoint rendering |
+| PDF export | LibreOffice 26.2.3.2; six pages, 562,150 bytes | First sandbox export failed; approved local retry succeeded |
+| Visual inspection | Poppler rendered all six final PDF pages; each inspected for layout, identity, screenshots, arrows and references | No clinical/safety or model-accuracy claim implied |
+| PDF text/link checks | Exact team/PS identity, 245 count and evaluation-pending wording present; five source links preserved | Research links are references, not ThermoScope performance evidence |
+| Portal lengths | Title 72/100; summary 1,570/10,000; description 6,007/50,000 characters | Excludes final newline; including it remains within limits |
+| Claim review | Main GIS/rules shown as built; P05 explicitly a separate branch; independent evaluation pending; AlphaEarth proposed | No dry-run scores, confirmed accidents, measured impact or production-readiness claims |
+
+Final PDF SHA-256: `e2de296e47bd71f2ee7bf6bb4a83f7d2473189b6ba695d41c8a1455489991d94`. PPTX: `d5d2deda29451836e49ac5477d1411ed51584d520b3730df45ed5183a2e2e3b0`. Detailed manifest: `SUBMISSION_PACKAGE.md`; local builder, finalization receipt, renders and package verification: workspace `.review/submission-build/`. A speaking/video script exists; a recorded video does not. No portal entry/upload/save/submission or public publication occurred. Application tests were not repeated for unchanged code.
+
+Checkpoint fetch found P05 advanced from `579aaf3` to `a243d29`. `git merge-base --is-ancestor 52c91f0 origin/p05-model` returned success. Its handoff reports 146 unit/API + 18 integration tests, migrations through 0007 and zero real reviews. Only ref/history/handoff inspected here; fresh CI confirmation, independent acceptance and Mac verification are still pending. Submission claims were not upgraded from this report.
+
+## 27–28 September 2026, 23:35–04:30 IST — P05 backfill, reviewer accounts, independent review, Mac check and integration
+
+At the owner's request ("can you solve these"). Linux x86_64 cloud workspace (Python 3.13.15, uv 0.12.19, Node 24.21.0, digest-pinned PostGIS 18-3.6) plus the owner's Mac through the desktop bridge. The Mac's main checkout and database were not changed; Mac tests ran in an isolated clone under ignored `local/p05-verify/`.
+
+| Check | Observed result | Scope / limitation |
+|---|---|---|
+| SP history backfill | 252 of 252 FIRMS area requests (`VIIRS_NOAA20_SP`, 14 regions × 18 five-day windows, 30 December 2025–29 March 2026), HTTP 200, VIIRS header, key absent from every response and saved file; 27,363 rows; retrieved 27 September 18:09–18:22 UTC. Inventory `docs/inventory/p05-backfill-files.csv` (`af18a0d0…1358`) | Key read from the Mac's `.env` inside the bridge shell and passed to curl on stdin; never printed |
+| Import | Workspace database backed up first (`pre-backfill-*.dump`); `import_saved.py`: 252 `SUCCEEDED`, 27,363 inserted, 0 problems, 49 s; observations 23,991 → 51,354 | Historical replay |
+| Archive continuity | New `features` guard: every UTC day from 90 days before each region's first case to its last case has a qualifying NOAA-20 run; 14 regions, 0 missing days | 15 s query |
+| Features | `case-features-v4` (unchanged code, ADR-022): 10,318 rows in 2 m 51 s; **10,035 history-complete** (was 1,321); 283 set aside, all within 750 m of a region edge; 9,131 rule labels (were 4,376; rules can now use recurrence), 240 registry; sha `b178a6e0…b6454`. v3 rows unchanged; recomputing v4 reports 10,318 unchanged | Rule labels are dry-run only |
+| Fingerprints | `p05-pilot-v1` and `p05-pilot-v2` manifests, episodes and splits identical to before (`fd1e627a…`, `94eebb40…`, `bf37782d…`, `43b03d45…`, `05992876…`); 0 reviews | Frozen sets untouched |
+| Training, reviewed | `INSUFFICIENT_LABELS` (`2e4fa530…`, manifest `f2d7fcbc…`); support train 34/0, validation 191/0 (registry SILVER only), test 0/0 | Correct refusal |
+| Training, dry run | `DRY_RUN_NOT_EVIDENCE` (`2153b3e0…`, `5b2bcbe3…`); rule-labelled support 5,733 / 1,884 / 1,535; card carries no scores; 283 cases set aside | Execution check only; never quote |
+| Review estimate | Eligible TEST pool 1,718 (rule proxy ≈ 168 industrial, 1,359 non-industrial, 191 unknown); ≈ 480 reviews to report, ≈ 1,100 to promote along the frozen queue | Rough; rules are not truth |
+| Reviewer accounts | Migration 0008 applied to the workspace database after a backup (0 accounts); per-person tokens (256-bit, SHA-256 stored, owner-only files, never printed); identity from `Authorization: Bearer`; adjudicator role; view log; voiding; rotation/reactivation; refusal to downgrade with accounts | Team-pilot sign-in, not SSO |
+| Independent review, pass 1 | Separate read-only pass on `origin/main..p05-model`: no auth bypass or token leak; **high**: a blind review could become the deciding adjudication; **medium**: reviewers could infer agreement from progress counters; archive version could be computed without the backfill; low: stale card text, no remedy for misused tokens, downgrade losing account links, token loss on file-write failure, script safety wording, sign-in edge cases. All fixed in `f36d292` | Probes on disposable databases |
+| Independent review, pass 2 | The same pass verified `f36d292`: finding 1 fixed without a new agreement channel; new medium: after a void, an adjudicator who had read both reviews could review the case "blind"; archive guard checked only the earliest run; low: HTTP summary still public on default servers, CLI error mapping, stored-token clearing on any failure, in-place migration edit. All fixed in `0e49e82` | Re-tested |
+| `make check` (workspace) | Ruff clean; **148 passed**; Prettier; `tsc`; Vite build | Map chunk warning unchanged |
+| `make integration` (workspace) | **19 passed** (new: personal accounts end to end, stale-role refusal, adjudication-view log, voiding, archive guard, CLI token files, downgrade refusal) | Disposable databases |
+| Browser (headless Chromium, fixture database only) | Sign-in rejects wrong/malformed tokens; four accounts open the same case: A and B save, adjudicator C's blind save is refused (409) and the page reloads the adjudication view with an empty form, D (non-adjudicator) is refused and never sees the disagreement; C adjudicates without names; reviewers see only their own progress ("Hidden" label totals); expired sign-in keeps the draft for the same person only; deactivation signs the page out; superseded set flagged; no horizontal scroll at 390 px; no token in page HTML. Screenshots outside Git: `shots2/2-rejected.png` `8fb203b0…`, `shots2/7-queue-phone.png` `537a789c…`, `shots3/1-stale-reloaded.png` `4ebde50f…` | Fixture reviewers only; fixture database dropped. **No review was written to a real case set** |
+| Mac, before `libomp` | Isolated clone at `f36d292`: install and ML install passed; XGBoost failed to load (`@rpath/libomp.dylib` not found; rpath only `/opt/homebrew/opt/libomp/lib`; Homebrew present, libomp not installed; scikit-learn's bundled libomp not used); `make check` 146 passed / 2 failed (both XGBoost); `make integration` 19 passed. Report `report-1-before-libomp.txt` `579307df…` | macOS 26.3 arm64 |
+| Mac, after `brew install libomp` (23.1.2, by the owner) | Isolated clone at `e2b2739`: both XGBoost probes passed; `make check` **148 passed** plus lint, format, typecheck and build; `make integration` **19 passed**. Report `report.txt` `8e168bf6…` | Secrets redacted; none present |
+| Secret scan | Every commit and both Mac reports checked for the FIRMS key, Postgres and database passwords (on the Mac) and the workspace database password (in the cloud): zero matches | Tokens for fixtures were deleted after use |

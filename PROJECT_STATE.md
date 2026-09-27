@@ -1,6 +1,6 @@
 # Project state
 
-Checkpoint: 27 September 2026, 23:45 IST, written on branch `p05-model` after the P05 reconciliation (internal record P05-RECONCILE). On canonical `main` the previous checkpoint (`52c91f0`) remains authoritative until the integrator integrates this branch. Read the internal handoff log first. Canonical workspace: `thermoscope`; private remote: https://github.com/ishowguts/thermoscope; branch `main`.
+Checkpoint: 28 September 2026 IST, the implementer integrated P05 into `main` at the owner's request while the integrator was out of usage (after the submission-package checkpoint `1e3bb0a`). Read the internal handoff log first. Canonical workspace: `thermoscope`; private remote: https://github.com/ishowguts/thermoscope; branch `main`. **The Mac checkout and its database were not changed **: the checkout is still at `1e3bb0a` and its database at migration 0005 until someone pulls, backs up and runs `make migrate` (see HANDOFF).
 
 ## Milestone status
 
@@ -10,7 +10,7 @@ Checkpoint: 27 September 2026, 23:45 IST, written on branch `p05-model` after th
 | P02 observations/storage/API/map | Complete; original 13 records and receipts preserved |
 | P03 OSM, WorldCover, events/sites | Technically integrated and Mac-verified; full gate still needs independent human case review |
 | P04 history and rules | Technically integrated and Mac-verified; uncalibrated heuristics, no learned model |
-| P05 labels/model pipeline | Reconciled with reviewed main on the branch `p05-model` (P05-RECONCILE in review); needs the independent acceptance, Mac verification, a recommended history backfill and human-reviewed labels |
+| P05 labels/model pipeline | Integrated into `main` (28 September): reconciled pipeline, NOAA-20 SP history backfill, personal reviewer accounts; two independent review passes; Mac-verified in an isolated clone (148 unit/API + 19 PostGIS tests, after `brew install libomp`). **Blocked on human reviews**: zero labels, no model evaluation. Independent acceptance on return still open |
 | P06–P08 | Not implemented on main |
 
 P03/P04 integration preserves the author commits. Review fixes: `329b716`; P03 merge: `3cd8893`; reviewed P04 merge: `53e56ba`; newer P05 handoff preserved in integration commit `b87fa86`. Five evidence defects were corrected with six regression cases: missing-history abstention, valid per-product coverage, OSM boundary coverage, adequate raster windows, and solar-source handling. Details: internal record P03-P04-REVIEW, ADR-020.
@@ -26,24 +26,24 @@ P03/P04 integration preserves the author commits. Review fixes: `329b716`; P03 m
 - Integrated main CI [36314032712](https://github.com/ishowguts/thermoscope/actions/runs/36314032712) succeeded on `b87fa86`; the final checkpoint is documentation only.
 - Current rules return UNKNOWN for all seven recent observations around the mapped solar photovoltaic feature. Refineries, mine and cropland outputs remain heuristic proposals. No confirmed industrial fire, human labels, accuracy, calibrated probability or alert readiness is claimed.
 
-## P05 on `p05-model` (reconciled)
+## P05 as integrated (28 September)
 
-The implementer merged reviewed main (`52c91f0`) into `p05-model` without rewriting history and applied ADR-020's safeguards to the P05 paths (ADR-021). NOAA-20 SP and NRT form one history stream without double counting; non-thermal power never counts as industry; OSM inputs are missing without full coverage; land cover uses the larger ADR-020 window. The original case set `p05-pilot-v1` is kept frozen but superseded: its 2 km grouping let 14 large facilities (360 cases) cross splits. `p05-pilot-v2` uses facility-aware grouping (same 10,318 episodes, 2,437 groups, grouping audit clean). Only cases with a complete 90-day history are trained or evaluated (1,321 now, from 10 June). An enforced evidence policy makes only dated imagery or official/company sources, with the source inside the pixel area and at least medium certainty, eligible for GOLD. A held-out-region protocol was added. Cases, splits, reviews, features and model records are immutable in the database. `REVIEW_ONLY=true` hides rule assessments from reviewers.
-
-Real-data runs in the workspace: reviewed policy `INSUFFICIENT_LABELS`; weak-label run `DRY_RUN_NOT_EVIDENCE` (execution check only; no score may be quoted). Zero human reviews exist. Checks: 146 unit/API and 18 PostGIS tests, fixture browser flow, ML advisory audit (none known), two independent read-only reviews with fixes applied. Linux only; Mac/OpenMP verification is the. Details: internal record P05-RECONCILE → Result, `docs/EVIDENCE.md` → "P05 reconciliation".
-
-Technical blockers: independent acceptance and Mac verification; NOAA-20 SP backfill 2025-12-30 → 2026-03-29 (252 requests, owner's key) for complete history; reviewer authentication beyond a shared token. Human blockers: two independent reviewers plus an adjudicator; roughly 310 reviews before any result can be reported (rule-proxy estimate), and the non-industrial test class may stay below 30 without the backfill. No accuracy exists for the deck.
+- Code: frozen facility-aware case set `p05-pilot-v2` (10,318 cases, 2,437 site groups, TRAIN 6,488 / VALIDATION 2,060 / TEST 1,770), blind review page with personal accounts (ADR-023), evidence policy, history eligibility, held-out-region protocol, immutable P05 records (migrations 0006–0008), XGBoost `xgb-source-binary-v4` with baselines, calibration, abstention and bootstrap intervals. Decisions: ADR-018, ADR-019, ADR-021–023.
+- Data (the workspace database, from saved hash-verified files): 51,354 observations across 14 regions, including the NOAA-20 SP history backfill from 30 December 2025 (252 files, 27,363 rows; ADR-022). `case-features-v4`: 10,035 of 10,318 cases history-complete; eligible TEST pool 1,718.
+- Results: reviewed training `INSUFFICIENT_LABELS`; rule-label dry run `DRY_RUN_NOT_EVIDENCE` (withheld scores, never quote). No learned-model accuracy exists. Predictions from the learned model are not served in the app.
+- The Mac's main database holds only the reviewed three-region P02–P04 data. To use P05 there: back up, `make migrate`, then import the saved P05 files and run the P05 commands in `docs/DEVELOPMENT.md` (`brew install libomp` once).
+- Evidence and checks: `docs/EVIDENCE.md` (P05 reconciliation; backfill, reviewer accounts and integration), `docs/COVERAGE_INVENTORY.md`, internal record P05-LABELS-MODEL.
 
 ## What remains
 
-1. Submission deck and portal package, owned (internal record SUBMISSION-DECK). The PPT/PDF/video are not revised or submitted yet. Official public table checked around 21:58 IST on 27 September: SIH26162 **140/500**, deadline **30 September**. Recheck when submitting; portal field limits remain unverified.
-2. ~~the implementer reconciles P05 under internal record P05-RECONCILE~~ Done on `p05-model` (27 September, 23:45 IST); in review.
-3. The integrator independently reviews the returned P05 branch, verifies Mac compatibility and integrates accepted changes. No review/model gate is waived to meet the submission date.
-4. Team leader arranges the human review: a domain reviewer for the prepared P03 sheet and two independent reviewers plus adjudication for P05 test labels. The P03 sheet contains rule outcomes and must not contaminate blind P05 test review.
+1. Submission package is **ready for team review**, owned (internal record SUBMISSION-DECK). A new editable six-slide PPTX, visually verified six-page PDF (562,150 bytes), all three portal text fields and a speaking/video script are in `../output/submission/`; manifest and checks: `docs/SUBMISSION_PACKAGE.md`. Video is not recorded. No draft or submission was created. Official public table checked around 21:58 IST on 27 September: SIH26162 **140/500**, deadline **30 September**. Signed-in form checked around 22:19 IST: title 100 characters, description 50,000, summary 10,000; PDF up to 10 MB; optional YouTube link. Details in `docs/SUBMISSION_DETAILS.md`; recheck at submission.
+2. P05 is integrated in `main`. On return, the integrator may independently accept it (the reviews were) and bring the Mac checkout up to date. Its earlier uncommitted edits went into `1e3bb0a`, so the checkout was clean at the last look: `git pull`, back up the database, `make migrate` (0005 → 0008). No review/model gate is waived to meet the submission date.
+3. The owner adds personal reviewer accounts (`make ml ARGS="add-reviewer --name …"`, one adjudicator) on the server reviewers will use, with `REVIEW_ONLY=true`, and passes each token privately.
+4. Team leader arranges the human review: a domain reviewer for the prepared P03 sheet and two independent reviewers plus adjudication for P05 test labels (about 480 reviews to report results, 1,100 to promote a model; rough rule-proxy estimates). The P03 sheet contains rule outcomes and must not contaminate blind P05 test review.
 
 The complete remaining-work inventory, including P06–P08 and the leader's responsibilities, is `docs/REMAINING_WORK.md`. Prepare the submission now; do not wait for the full product.
 
-Registered team: **Git_Push_Pray**, Bittu Mandal, Team ID **144613**, **INDIAN INSTITUTE OF INFORMATION TECHNOLOGY, PUNE**. FIRMS access works and is stored privately. Earthdata web login works per the user; the current turn did not test programmatic archive/HLS access. Portal nomination/field limits remain unaudited. No cloud billing account, paid resource, public release or SIH submission was changed.
+Registered team: **Git_Push_Pray**, Bittu Mandal, Team ID **144613**, **INDIAN INSTITUTE OF INFORMATION TECHNOLOGY, PUNE**. FIRMS access works and is stored privately. Earthdata web login works per the user; programmatic archive/HLS access remains untested. Signed-in portal identity, six-member record and access to the correct idea form are verified; no separate nomination badge was displayed. Portal warns against changes after final submission. No cloud billing account, paid resource, public release, draft or SIH submission was changed.
 
 ## Local resources and restart
 

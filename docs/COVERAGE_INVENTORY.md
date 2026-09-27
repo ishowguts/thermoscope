@@ -216,7 +216,7 @@ Complete windows for every case need NOAA-20 SP from **30 December 2025 to 29 Ma
 | Dates | 30 December 2025 – 29 March 2026, 18 five-day windows per region |
 | Regions | All 14 pilot regions (same bounding boxes as the rest of P05) |
 | Files | 252 CSVs with `.meta.json` sidecars in the Mac's ignored `local/p05-backfill/raw/`; hashes, received times and row counts in `docs/inventory/p05-backfill-files.csv` (SHA-256 `af18a0d0…1358`) |
-| Retrieved | 27 September 2026 18:09–18:22 UTC (28 September IST), HTTP 200 for every request; 13 windows returned no detections |
+| Retrieved | 27 September 2026 18:09–18:22 UTC (23:39–23:52 IST), HTTP 200 for every request; 13 windows returned no detections |
 | Rows | 27,363 detections (Jharia 7,248, Talcher 7,052, Korba 3,709, Mumbai 3,019, Simlipal 1,557, Singrauli 1,456, Visakhapatnam 855, Paradip 832, Jamnagar 793, Haldia 411, Panipat 304, KG basin 79, Punjab 29, Mathura 19) |
 | Import | 252 runs `SUCCEEDED` as historical replay, 0 quarantined rows |
 

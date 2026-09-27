@@ -1,14 +1,14 @@
 # SIH26162 submission package
 
-Prepared from the official 2026 sources and the team's current artifacts. This is a revision brief and draft narrative, not an already revised or submitted PPT. The original PPT and Canva design have not been changed.
+Prepared from the official 2026 sources and the team's current artifacts. A new six-slide PPTX/PDF and portal text are now ready for team review; [SUBMISSION_PACKAGE.md](SUBMISSION_PACKAGE.md) records the files and validation. Nothing is uploaded or submitted. The original PPT and Canva design have not been changed. The narrative below remains design guidance; the generated package reflects the verified P03/P04 implementation and explicitly qualified P05 branch work.
 
 ## Immediate priority
 
-The [2026 guidelines](https://sih.gov.in/letters/2026/SIH%202026%20Guidelines.pdf) give 30 September 2026 as the submission deadline and cap ideas per PS at 500. The [public table](https://www.sih.gov.in/sih2026PS), inspected in the browser at approximately 21:58 IST on 27 September, showed **140/500** and **30 September 2026** for SIH26162. This replaces the older 93/500 snapshot. Recheck at submission; being below the cap now does not reserve a place. Signed-in portal constraints have not yet been verified.
+The [2026 guidelines](https://sih.gov.in/letters/2026/SIH%202026%20Guidelines.pdf) give 30 September 2026 as the submission deadline and cap ideas per PS at 500. The [public table](https://www.sih.gov.in/sih2026PS), inspected in the browser at approximately 21:58 IST on 27 September, showed **140/500** and **30 September 2026** for SIH26162. This replaces the older 93/500 snapshot. Recheck at submission; being below the cap now does not reserve a place. Signed-in portal constraints were subsequently verified around 22:19 IST; see `SUBMISSION_DETAILS.md`.
 
-Use the [official presentation template](https://sih.gov.in/letters/2026/SIH2026-IDEA-Presentation-Format.pptx): retain the six content positions and their headings, remove its final instruction page, and submit a PDF. The instruction page limits the presentation to six slides including the title. Signed-in portal limits, optional links and editing after submission are still unverified.
+Use the [official presentation template](https://sih.gov.in/letters/2026/SIH2026-IDEA-Presentation-Format.pptx): retain the six content positions and their headings, remove its final instruction page, and submit a PDF. The instruction page limits the presentation to six slides including the title. The signed-in upload limit is 10 MB; title allows 100 characters, description 50,000 and abstract/summary 10,000. A YouTube link is explicitly optional. The portal warns against changes after final submission; actual post-submit editing was not tested.
 
-Team leader access is available according to the user. Team ID 144613, registered name Git_Push_Pray, leader Bittu Mandal and college INDIAN INSTITUTE OF INFORMATION TECHNOLOGY, PUNE are confirmed in `SUBMISSION_DETAILS.md`. Verify nomination status and portal limits before final packaging. Do not put credentials in this repository.
+Team leader access was verified in the signed-in portal on 27 September. Team ID 144613, registered name Git_Push_Pray, leader Bittu Mandal and college INDIAN INSTITUTE OF INFORMATION TECHNOLOGY, PUNE are confirmed in `SUBMISSION_DETAILS.md`. The correct SIH26162 form is accessible with no visible eligibility block; no separate nomination badge was displayed. Draft and submitted-idea lists are empty. Recheck the final entries before submitting. Do not put credentials in this repository.
 
 ## Six-slide narrative
 
@@ -73,13 +73,13 @@ Use a short limitation sentence: **Source mapping, satellite coverage and label 
 
 ThermoScope proposes an AI-enabled GIS workbench for distinguishing industrial thermal sources from vegetation and agricultural burning. It combines NASA FIRMS observations with mapped industrial infrastructure, dated land-cover and satellite context, and each site's earlier thermal activity. The system separates likely source, behaviour relative to its observed baseline, and analyst review priority, avoiding the assumption that every industrial hotspot is an accident. Each assessment exposes its timestamps, supporting evidence, uncertainty and data gaps. A structured baseline will be compared with satellite-embedding features using independently reviewed labels and held-out sites. The workbench will support map overlays, history, analyst review and reproducible case exports. Initial validation will focus on a bounded Indian pilot and include routine industrial sources, independently corroborated abnormal cases where satellite observations exist, nearby non-industrial burning and missing-data failures.
 
-Adapt to the actual portal's character limit. This paragraph is a proposed-system description, not a report of completed validation.
+Use the verified limits: 10,000 characters for Abstract/Summary and 50,000 for Idea Description; these are ceilings, not targets. This paragraph is a proposed-system description, not a report of completed validation.
 
 ## Video: recommended supporting evidence
 
-The inspected guideline fields establish a PDF requirement; they do not establish a mandatory student demo video. Confirm the portal's link fields before recording/uploading. A short video can make the workflow easier to judge, but no defensible selection uplift is known.
+The signed-in form explicitly provides an optional YouTube link and no dedicated GitHub/website field. A video is supporting evidence, not a mandatory submission item. A short video can make the workflow easier to judge, but no defensible selection uplift is known.
 
-Suggested length: approximately 2 minutes 45 seconds, unless the portal imposes another limit.
+Suggested length: approximately 2 minutes 45 seconds. The inspected form displayed no video-duration limit.
 
 | Time | Screen / narration goal |
 |---|---|
