@@ -483,6 +483,7 @@ export type ReviewCase = {
     independent_kinds: string[];
     imagery_window_days: { before: number; after: number };
     gold_needs: string;
+    source_locations: string[];
   };
   labels: string[];
   subtypes: string[];

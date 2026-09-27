@@ -31,6 +31,7 @@ type Draft = {
   source_label: string;
   industrial_subtype: string;
   certainty: string;
+  source_location: string;
   evidence: EvidenceRow[];
   notes: string;
 };
@@ -46,8 +47,15 @@ const EMPTY_DRAFT: Draft = {
   source_label: "",
   industrial_subtype: "",
   certainty: "",
+  source_location: "",
   evidence: [EMPTY_ROW],
   notes: "",
+};
+
+const LOCATION_TEXT: Record<string, string> = {
+  INSIDE_PIXEL_AREA: "Inside the approximate pixel area",
+  NEARBY_ONLY: "Nearby, outside the pixel area",
+  UNSURE: "Not sure where exactly",
 };
 
 const EVIDENCE_TEXT: Record<string, string> = {
@@ -365,6 +373,10 @@ function ReviewForm({
       );
       return;
     }
+    if (draft.source_label !== "UNRESOLVED" && !draft.source_location) {
+      setError("Say where the source is relative to the pixel area.");
+      return;
+    }
     if (rows.some((r) => r.kind === "DATED_IMAGERY" && !r.observed_on)) {
       setError("Add the date of the imagery you looked at.");
       return;
@@ -380,6 +392,10 @@ function ReviewForm({
             ? draft.industrial_subtype
             : null,
         certainty: draft.certainty,
+        source_location:
+          draft.source_label === "UNRESOLVED"
+            ? draft.source_location || null
+            : draft.source_location,
         evidence: rows.map((r) => ({
           url: r.url.trim(),
           kind: r.kind,
@@ -392,7 +408,7 @@ function ReviewForm({
       const tier =
         saved.review_tier === "GOLD-eligible"
           ? "It can count towards test truth."
-          : "It cannot count as test truth: it needs dated imagery or an official source and at least medium certainty.";
+          : "It cannot count as test truth: that needs dated imagery or an official source, the source inside the pixel area and at least medium certainty.";
       onSaved(
         (saved.role === "ADJUDICATOR"
           ? "Adjudication saved. "
@@ -453,6 +469,25 @@ function ReviewForm({
             {level.charAt(0) + level.slice(1).toLowerCase()}
           </label>
         ))}
+      </fieldset>
+      <fieldset>
+        <legend>Where is the source you identified?</legend>
+        {data.evidence_policy.source_locations.map((where) => (
+          <label key={where} className="choice">
+            <input
+              type="radio"
+              name="location"
+              value={where}
+              checked={draft.source_location === where}
+              onChange={() => set({ source_location: where })}
+            />
+            {LOCATION_TEXT[where] ?? where}
+          </label>
+        ))}
+        <p className="help">
+          Pixel area: within {distance(data.location.support_radius_m)} of the
+          location shown.
+        </p>
       </fieldset>
       <fieldset className="evidence-rows">
         <legend>Evidence you relied on (up to five)</legend>

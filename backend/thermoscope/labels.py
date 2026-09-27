@@ -49,6 +49,9 @@ EVIDENCE_KINDS = (
     "OTHER",
 )  # fmt: skip
 INDEPENDENT_KINDS = {"DATED_IMAGERY", "OFFICIAL_OR_COMPANY"}
+# Geographic uncertainty of a label: where the identified source lies relative to the
+# detection's approximate pixel area. Only INSIDE_PIXEL_AREA can support GOLD.
+SOURCE_LOCATIONS = ("INSIDE_PIXEL_AREA", "NEARBY_ONLY", "UNSURE")
 IMAGERY_WINDOW_DAYS = (365, 30)  # imagery dated up to a year before to 30 days after the episode
 PROJECT_INPUT_HOSTS = (
     "openstreetmap.org", "osm.org", "firms.modaps.eosdis.nasa.gov", "esa-worldcover.org",
@@ -663,6 +666,7 @@ def qualifies(review: dict) -> bool:
         isinstance(evidence, dict)
         and evidence.get("policy") == EVIDENCE_POLICY
         and evidence.get("independent") is True
+        and evidence.get("source_location") == "INSIDE_PIXEL_AREA"
         and review.get("certainty") in {"HIGH", "MEDIUM"}
     )
 
@@ -937,7 +941,9 @@ def review_case(settings: Settings, set_ref: str, case_id: str) -> dict | None:
                 "before": IMAGERY_WINDOW_DAYS[0],
                 "after": IMAGERY_WINDOW_DAYS[1],
             },  # fmt: skip
-            "gold_needs": "independent evidence and HIGH or MEDIUM certainty",
+            "gold_needs": "independent evidence, the source inside the pixel area and HIGH or "
+            "MEDIUM certainty",
+            "source_locations": list(SOURCE_LOCATIONS),
         },
         "labels": list(SOURCE_LABELS),
         "subtypes": list(SUBTYPES),
@@ -1038,6 +1044,7 @@ def submit_review(settings: Settings, set_ref: str, payload: dict) -> dict:
     certainty = payload.get("certainty")
     items = payload.get("evidence") or []
     subtype = payload.get("industrial_subtype")
+    location = payload.get("source_location")
     notes = (payload.get("notes") or "").strip()[:2000]
     case_id = str(payload.get("case_id", ""))
     if not re.fullmatch(r"[\w .'-]{2,60}", reviewer):
@@ -1051,6 +1058,10 @@ def submit_review(settings: Settings, set_ref: str, payload: dict) -> dict:
     if label != "UNRESOLVED" and not items:
         raise ValueError("cite at least one evidence link, or choose UNRESOLVED")
     assess_evidence(items, None, None)  # form errors before touching the database
+    if location is not None and location not in SOURCE_LOCATIONS:
+        raise ValueError("unknown source location")
+    if label != "UNRESOLVED" and location is None:
+        raise ValueError("say where the source is relative to the pixel area")
     with database_engine(settings) as engine, engine.begin() as conn:
         set_id = case_set_id(conn, set_ref)
         newer = superseded_by(conn, set_id)
@@ -1063,7 +1074,7 @@ def submit_review(settings: Settings, set_ref: str, payload: dict) -> dict:
         ).first()
         if case is None:
             raise LookupError("unknown case")
-        evidence = assess_evidence(items, case[1], case[2])
+        evidence = assess_evidence(items, case[1], case[2]) | {"source_location": location}
         existing = (
             conn.execute(
                 text("""SELECT reviewer,role,source_label,certainty,evidence FROM label_reviews

@@ -24,9 +24,11 @@ IMAGERY = {"url": URL, "kind": "DATED_IMAGERY", "observed_on": "2026-05-01"}
 OSM_LINK = {"url": "https://www.openstreetmap.org/way/1", "kind": "PROJECT_INPUT"}
 
 
-def review(label, role="REVIEWER", evidence=(IMAGERY,), who="a", certainty="HIGH"):
+def review(label, role="REVIEWER", evidence=(IMAGERY,), who="a", certainty="HIGH",
+           location="INSIDE_PIXEL_AREA"):  # fmt: skip
+    checked = assess_evidence(list(evidence), START, START) | {"source_location": location}
     return {"source_label": label, "role": role, "reviewer": who, "certainty": certainty,
-            "evidence": assess_evidence(list(evidence), START, START)}  # fmt: skip
+            "evidence": checked}  # fmt: skip
 
 
 def cases(region, groups):
@@ -105,6 +107,9 @@ def test_tiers_gold_needs_evidence_and_test_needs_two_agreeing_reviews():
         [review("INDUSTRIAL"), review("INDUSTRIAL", who="b", certainty="LOW")], 2, None, None
     )
     assert doubtful["tier"] == "SILVER"
+    # A source seen only near the pixel area leaves the label geographically uncertain.
+    nearby = resolve_label([review("INDUSTRIAL", location="NEARBY_ONLY")], 1, None, None)
+    assert nearby["tier"] == "SILVER"
     legacy = {"source_label": "OTHER", "role": "REVIEWER", "reviewer": "z", "certainty": "HIGH",
               "evidence": [URL]}  # fmt: skip
     assert resolve_label([legacy], 1, None, None)["tier"] == "SILVER"  # unknown format
@@ -191,6 +196,15 @@ def test_kappa():
                 "reviewer": "Asha",
                 "source_label": "OTHER",
                 "certainty": "HIGH",
+                "evidence": [IMAGERY],
+            },
+            "pixel area",
+        ),  # fmt: skip
+        (
+            {
+                "reviewer": "Asha",
+                "source_label": "OTHER",
+                "certainty": "HIGH",
                 "evidence": [{"url": URL}],
             },
             "evidence type",
@@ -205,7 +219,8 @@ def test_submit_review_validates_before_touching_the_database(payload, message):
 
 def body():
     return {"case_id": "a" * 64, "reviewer": "Asha", "source_label": "INDUSTRIAL",
-            "certainty": "HIGH", "evidence": [IMAGERY]}  # fmt: skip
+            "certainty": "HIGH", "source_location": "INSIDE_PIXEL_AREA",
+            "evidence": [IMAGERY]}  # fmt: skip
 
 
 def test_review_submission_is_disabled_without_a_token():

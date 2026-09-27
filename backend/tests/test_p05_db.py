@@ -128,7 +128,8 @@ def test_case_set_reviews_features_and_training_gate(configured):
 
     def post(who, label, evidence=(IMAGERY,), token=TOKEN, where=base):
         payload = {"case_id": case_id, "reviewer": who, "source_label": label,
-                   "certainty": "MEDIUM", "evidence": list(evidence)}  # fmt: skip
+                   "certainty": "MEDIUM", "source_location": "INSIDE_PIXEL_AREA",
+                   "evidence": list(evidence)}  # fmt: skip
         return client.post(f"{where}/reviews", json=payload,
                            headers={"X-Annotation-Token": token})  # fmt: skip
 
@@ -164,6 +165,7 @@ def test_case_set_reviews_features_and_training_gate(configured):
     assert all(r.blind for r in stored)
     assert stored[0].evidence["policy"] == "evidence-policy-v1"
     assert stored[0].evidence["items"][0]["licence"] == "NASA EOSDIS open data"
+    assert stored[0].evidence["source_location"] == "INSIDE_PIXEL_AREA"
 
     # Frozen splits and append-only reviews are enforced by the database, not only the app.
     for statement in (

@@ -21,6 +21,7 @@ from thermoscope.firms import IngestError
 from thermoscope.labels import (
     EVIDENCE_KINDS,
     SOURCE_LABELS,
+    SOURCE_LOCATIONS,
     SUBTYPES,
     CaseSetSuperseded,
     label_summary,
@@ -60,6 +61,7 @@ class ReviewIn(BaseModel):
     source_label: Literal[SOURCE_LABELS]
     industrial_subtype: Literal[SUBTYPES] | None = None
     certainty: Literal["HIGH", "MEDIUM", "LOW"]
+    source_location: Literal[SOURCE_LOCATIONS] | None = None
     evidence: list[EvidenceIn] = Field(default_factory=list, max_length=5)
     notes: str | None = Field(default=None, max_length=2000)
 
