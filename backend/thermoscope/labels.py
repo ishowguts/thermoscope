@@ -565,7 +565,12 @@ def review_queue(settings: Settings, set_ref: str, reviewer: str, limit: int = 2
 
 def review_case(settings: Settings, set_ref: str, case_id: str) -> dict | None:
     """Evidence for a blind review: no rule, weak/silver label or model output."""
-    from thermoscope.context import find_candidates, find_snapshot, support_radius_m
+    from thermoscope.context import (
+        find_candidates,
+        find_snapshot,
+        snapshot_provider,
+        support_radius_m,
+    )
 
     with database_engine(settings) as engine, engine.connect() as conn:
         set_id = case_set_id(conn, set_ref)
@@ -601,7 +606,9 @@ def review_case(settings: Settings, set_ref: str, case_id: str) -> dict | None:
         )
         rep = next(m for m in members if m["id"] == case["representative_observation_id"])
         radius, _ = support_radius_m(rep["scan_km"], rep["track_km"])
-        snapshot = find_snapshot(conn, case["lon"], case["lat"], "OSM_OVERPASS")
+        snapshot = find_snapshot(
+            conn, case["lon"], case["lat"], snapshot_provider(DataMode(case["data_mode"]))
+        )
         candidates = []
         if snapshot:
             candidates, _ = find_candidates(conn, case["lon"], case["lat"], radius, snapshot["id"])
@@ -648,7 +655,8 @@ def review_case(settings: Settings, set_ref: str, case_id: str) -> dict | None:
         "adjudication": {"needed": True, "earlier_reviews": prior} if pending else None,
         "guidance": "Decide the likely heat source from independent evidence (imagery, registry "
         "records, official or company sources). Cite at least one link. Choose UNRESOLVED "
-        "when the evidence does not support a decision. Do not guess.",
+        "when the evidence does not support a decision. Do not guess. While reviewing, do not "
+        "open the Observations page or its assessment panel: it shows automated assessments.",
         "labels": list(SOURCE_LABELS),
         "subtypes": list(SUBTYPES),
     }
@@ -774,8 +782,10 @@ def label_summary(settings: Settings, set_ref: str) -> dict:
     for item in labels.values():
         if item["split"] == "TEST" and item["test_eligible"]:
             gold_test[item["label"]] += 1
+    # Agreement on industrial vs not, over pairs where both reviewers decided.
+    decided = [a for _, a in firsts if "UNRESOLVED" not in a[:2]]
     binary = [("IND" if a[0] == "INDUSTRIAL" else "NON", "IND" if a[1] == "INDUSTRIAL" else "NON")
-              for _, a in firsts]  # fmt: skip
+              for a in decided]  # fmt: skip
     return {
         "case_set": dict(info) | {"id": str(set_id)},
         "label_policy": LABEL_POLICY,
@@ -784,6 +794,7 @@ def label_summary(settings: Settings, set_ref: str) -> dict:
         "reviews_total": total,
         "double_reviewed_cases": len(firsts),
         "binary_agreement_kappa": cohen_kappa(binary),
+        "kappa_pairs": len(binary),
         "pending_adjudication": sum(
             1 for v in labels.values() if v["basis"] == "DISAGREEMENT_PENDING_ADJUDICATION"
         ),

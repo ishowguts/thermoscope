@@ -116,6 +116,7 @@ def test_case_set_reviews_features_and_training_gate(configured):
     summary = label_summary(configured, "fixture-set")
     assert summary["gold_test_labels"] == {"AGRICULTURAL_BURN": 1}
     assert summary["double_reviewed_cases"] == 1 and summary["pending_adjudication"] == 0
+    assert summary["kappa_pairs"] == 1  # "cannot decide" pairs would be left out
 
     with database_engine(configured) as engine, engine.connect() as conn:
         stored = conn.execute(

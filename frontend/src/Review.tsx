@@ -588,8 +588,8 @@ export function ReviewPage() {
                   : summary.binary_agreement_kappa.toFixed(2)}
               </strong>
               <small>
-                Cohen’s kappa over {summary?.double_reviewed_cases ?? 0}{" "}
-                double-reviewed case(s)
+                Cohen’s kappa over {summary?.kappa_pairs ?? 0} double-reviewed
+                case(s) where both reviewers decided
               </small>
             </div>
           </section>

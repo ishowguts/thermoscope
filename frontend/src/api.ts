@@ -472,6 +472,7 @@ export type LabelSummary = {
   gold_test_labels: Record<string, number>;
   double_reviewed_cases: number;
   binary_agreement_kappa: number | null;
+  kappa_pairs: number;
   pending_adjudication: number;
   reviews_total: number;
 };

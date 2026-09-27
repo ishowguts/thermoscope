@@ -28,7 +28,12 @@ from thermoscope.assessment import (
     source_rule,
 )
 from thermoscope.config import DataMode, Settings
-from thermoscope.context import find_candidates, find_snapshot, support_radius_m
+from thermoscope.context import (
+    find_candidates,
+    find_snapshot,
+    snapshot_provider,
+    support_radius_m,
+)
 from thermoscope.database import batch_engine, database_engine
 from thermoscope.labels import (
     FEATURE_VERSION,
@@ -40,16 +45,19 @@ from thermoscope.labels import (
 )
 from thermoscope.landcover import observation_landcover
 
-MODEL_VERSION = "xgb-source-binary-v1"
+MODEL_VERSION = "xgb-source-binary-v2"
 DISTANCE_CAP_M = 5000.0
 EPISODE = [
     "obs_count", "overpass_count", "duration_h", "frp_max", "frp_overpass_median",
     "bt_i4_median", "bt_i5_median", "bt_diff_median", "night_fraction", "high_conf_fraction",
     "low_conf_fraction", "scan_median", "track_median",
 ]  # fmt: skip
+# Stored for audit but not model inputs: the archive starts on 30 March 2026, so retrieved-day
+# coverage and 180-day counts rise with the episode date and would act as a date (season) proxy.
+HISTORY_STORED_ONLY = ["active_days_180", "coverage_90", "coverage_180"]
 HISTORY = [
-    "active_days_30", "active_days_90", "active_days_180", "overpasses_90", "coverage_90",
-    "coverage_180", "days_since_last", "history_frp_median_90", "history_night_fraction_90",
+    "active_days_30", "active_days_90", "overpasses_90", "days_since_last",
+    "history_frp_median_90", "history_night_fraction_90",
 ]  # fmt: skip
 OSM = [
     "osm_covered", "n_industrial_in_support", "nearest_industrial_m", "n_industrial_2km",
@@ -85,6 +93,7 @@ MIN_COVERAGE = 0.5
 MIN_TEST_PER_CLASS_REPORT = 10
 MIN_TEST_PER_CLASS_PROMOTE = 30
 MIN_TRAIN_PER_CLASS = 20
+MIN_VALIDATION_PER_CLASS = 5  # calibration and the abstention threshold need both classes
 BOOTSTRAP = 1000
 NON_INDUSTRIAL = {"VEGETATION_FIRE", "AGRICULTURAL_BURN", "OTHER"}
 
@@ -244,7 +253,7 @@ def compute_case_features(settings: Settings, set_ref: str) -> dict:
             rep = next(m for m in members if m["id"] == case["representative_observation_id"])
             inputs = load_inputs(conn, rep["id"], mode, case["as_of"], Basis.RETROSPECTIVE)
             radius, _ = support_radius_m(rep["scan"], rep["track"])
-            snapshot = find_snapshot(conn, case["lon"], case["lat"], "OSM_OVERPASS")
+            snapshot = find_snapshot(conn, case["lon"], case["lat"], snapshot_provider(mode))
             candidates = []
             if snapshot:
                 candidates, _ = find_candidates(
@@ -529,16 +538,17 @@ def train_and_evaluate(settings: Settings, set_ref: str, *, dry_run_weak: bool =
         "tiers_used": sorted({r["resolved"]["tier"] for r in train + val + test}),
     }
     enough_train = min(report["support"]["train"].values()) >= MIN_TRAIN_PER_CLASS
+    enough_val = min(report["support"]["validation"].values()) >= MIN_VALIDATION_PER_CLASS
     enough_test = min(report["support"]["test"].values()) >= MIN_TEST_PER_CLASS_REPORT
     status = "DRY_RUN_NOT_EVIDENCE" if dry_run_weak else "INSUFFICIENT_LABELS"
     run_id = uuid4()
     out_dir = Path(settings.object_store_local_path).parent / "models" / str(run_id)
     out_dir.mkdir(parents=True, exist_ok=True)
-    if not enough_train or not val or not enough_test:
+    if not (enough_train and enough_val and enough_test):
         report["status"] = "INSUFFICIENT_LABELS" if not dry_run_weak else status
         report["reason"] = (
-            f"Need ≥{MIN_TRAIN_PER_CLASS} training and ≥{MIN_TEST_PER_CLASS_REPORT} "
-            "test cases per class"
+            f"Need ≥{MIN_TRAIN_PER_CLASS} training, ≥{MIN_VALIDATION_PER_CLASS} validation and "
+            f"≥{MIN_TEST_PER_CLASS_REPORT} test cases per class"
             + ("" if dry_run_weak else " with reviewed test labels (two agreeing reviews or "
                "adjudication)")
             + "."
@@ -672,11 +682,12 @@ def known_site_future(rows, dry_run_weak) -> dict:
         for r in rows
         if r["forward_period"] == "AFTER" and r["target"] is not None
         and r["split_group"] in seen
-        and (r["resolved"]["tier"] in ok if dry_run_weak else r["resolved"]["tier"] == "GOLD")
+        and (r["resolved"]["tier"] in ok if dry_run_weak else r["resolved"]["test_eligible"])
     ]  # fmt: skip
     y_before = [r["target"] for r in before]
     y_after = [r["target"] for r in after]
-    if min(y_before.count(0), y_before.count(1)) < 5 or len(set(y_after)) < 2:
+    if (min(y_before.count(0), y_before.count(1)) < MIN_TRAIN_PER_CLASS
+            or min(y_after.count(0), y_after.count(1)) < MIN_TEST_PER_CLASS_REPORT):  # fmt: skip
         return {"status": "INSUFFICIENT_LABELS", "train_cases": len(before),
                 "test_cases": len(after)}  # fmt: skip
     model = fit_xgb(matrix(before, FEATURES), np.array(y_before))
@@ -752,9 +763,12 @@ def io_csv(rows: list[dict]) -> bytes:
 
 
 def summary_of(report: dict) -> dict:
-    keep = {"status", "support", "label_policy", "reason", "baselines_macro_f1"}
+    keep = {"status", "support", "label_policy", "reason", "baselines_macro_f1", "do_not_quote"}
     out = {k: v for k, v in report.items() if k in keep}
     evaluation = report.get("evaluation")
+    if report["status"] == "DRY_RUN_NOT_EVIDENCE":
+        out.pop("baselines_macro_f1", None)  # scores stay in metrics.json with the notice
+        return out
     if evaluation:
         out["macro_f1"] = {k: v["macro_f1"] for k, v in evaluation.items()
                            if isinstance(v, dict) and "macro_f1" in v}  # fmt: skip

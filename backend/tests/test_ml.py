@@ -14,10 +14,12 @@ from thermoscope.ml import (
     classification_metrics,
     episode_features,
     fit_platt,
+    known_site_future,
     landcover_features,
     model_card,
     osm_features,
     rule_predictions,
+    summary_of,
 )
 
 T0 = datetime(2026, 5, 1, 20, 30, tzinfo=UTC)
@@ -43,6 +45,8 @@ def test_feature_lists_hold_no_identity_location_date_or_nasa_type():
               "nasa_type", "type", "name", "registry", "gppd")  # fmt: skip
     for column in FEATURES:
         assert column not in banned and not column.endswith("_id")
+    for proxy in ("coverage_90", "coverage_180", "active_days_180"):
+        assert proxy not in FEATURES  # rise with the date because the archive starts in March
     assert set(FEATURE_SETS["full"]) == set(FEATURES)
     assert len(FEATURES) == len(set(FEATURES))
 
@@ -199,3 +203,26 @@ def test_training_reports_baselines_intervals_and_never_promotes_small_tests(mon
 
     ml.train_and_evaluate(settings, "set", dry_run_weak=True)
     assert captured["report"]["status"] == "DRY_RUN_NOT_EVIDENCE"
+
+
+def test_dry_run_scores_never_reach_the_model_list():
+    report = {"status": "DRY_RUN_NOT_EVIDENCE", "support": {}, "label_policy": "p",
+              "reason": "r", "do_not_quote": "n", "baselines_macro_f1": {"full": 0.99},
+              "evaluation": {"full": {"macro_f1": 0.99}}}  # fmt: skip
+    summary = summary_of(report)
+    assert "0.99" not in str(summary) and summary["do_not_quote"] == "n"
+
+
+def test_known_site_future_needs_reviewed_support_in_both_periods():
+    rows = synthetic_rows()
+    for r in rows:
+        r["forward_period"] = "AFTER" if r["split"] == "TEST" else "BEFORE"
+    assert known_site_future(rows, False)["status"] == "INSUFFICIENT_LABELS"  # groups unseen
+    for r in rows:
+        if r["split"] == "TEST":
+            r["split_group"] = "g0" if r["target"] == 1 else "g1"
+    result = known_site_future(rows, False)
+    assert result["status"] == "EVALUATED" and result["test_cases"] == 48
+    for r in rows:
+        r["resolved"] = r["resolved"] | {"test_eligible": False}
+    assert known_site_future(rows, False)["status"] == "INSUFFICIENT_LABELS"
