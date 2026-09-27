@@ -32,6 +32,7 @@ P03/P04 integration preserves the author commits. Review fixes: `329b716`; P03 m
 - Data (the workspace database, from saved hash-verified files): 51,354 observations across 14 regions, including the NOAA-20 SP history backfill from 30 December 2025 (252 files, 27,363 rows; ADR-022). `case-features-v4`: 10,035 of 10,318 cases history-complete; eligible TEST pool 1,718.
 - Results: reviewed training `INSUFFICIENT_LABELS`; rule-label dry run `DRY_RUN_NOT_EVIDENCE` (withheld scores, never quote). No learned-model accuracy exists. Predictions from the learned model are not served in the app.
 - The Mac's main database holds only the reviewed three-region P02–P04 data. To use P05 there: back up, `make migrate`, then import the saved P05 files and run the P05 commands in `docs/DEVELOPMENT.md` (`brew install libomp` once).
+- Integration merge `3b12068`; main CI [36355168155](https://github.com/ishowguts/thermoscope/actions/runs/36355168155) succeeded.
 - Evidence and checks: `docs/EVIDENCE.md` (P05 reconciliation; backfill, reviewer accounts and integration), `docs/COVERAGE_INVENTORY.md`, internal record P05-LABELS-MODEL.
 
 ## What remains
