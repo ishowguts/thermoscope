@@ -170,3 +170,31 @@ def test_tile_cache_slices_match_single_reads_exactly(tmp_path):
         cached = cache.read(path, lon, lat, 1000)
         assert (single[0] == cached[0]).all() and single[0].shape == cached[0].shape
         assert tuple(single[1])[:6] == tuple(cached[1])[:6] and single[2] == cached[2]
+
+
+def test_tile_cache_keeps_the_pilot_limits_and_wide_support_windows(tmp_path):
+    from thermoscope.landcover import TileCache
+
+    path = synthetic_raster(tmp_path / "wide.tif", west=69.75, north=22.35, size=1000)
+    points = [(69.8, 22.3), (69.81, 22.29)]
+    cache = TileCache()
+    cache.prepare(path, points, 2300)  # support circle wider than the 1 km context
+    for lon, lat in points:
+        single = read_window(path, lon, lat, 2300)
+        cached = cache.read(path, lon, lat, 2300)
+        assert (single[0] == cached[0]).all() and single[0].shape == cached[0].shape
+    with pytest.raises(IngestError, match="RASTER_WINDOW_OUTSIDE_PILOT_LIMITS"):
+        cache.read(path, 69.8, 22.3, 5001)
+
+
+def test_tile_cache_rejects_unsupported_raster_layouts(tmp_path):
+    from thermoscope.landcover import TileCache
+
+    path = tmp_path / "float.tif"
+    grid = from_origin(69.78, 22.32, PIXEL, PIXEL)
+    profile = {"driver": "GTiff", "height": 50, "width": 50, "count": 1, "dtype": "float32",
+               "crs": "EPSG:4326", "transform": grid}  # fmt: skip
+    with rasterio.open(path, "w", **profile) as out:
+        out.write(np.zeros((50, 50), dtype=np.float32), 1)
+    with pytest.raises(IngestError, match="UNSUPPORTED_RASTER"):
+        TileCache().prepare(str(path), [(69.781, 22.319), (69.782, 22.318)], 50)

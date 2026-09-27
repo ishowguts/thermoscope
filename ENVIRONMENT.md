@@ -1,6 +1,6 @@
 # Environment and version baseline
 
-Candidate research dated 25 September 2026; P01/P02 verification dated 26–27 September. **The installed API/UI/map subset below is tested and frozen. Remaining raster, ML and optional packages are candidates, not an installed/tested combination.** Do not silently substitute prereleases or `latest` tags.
+Candidate research dated 25 September 2026; P01–P04 verification dated 26–27 September. **The installed API/UI/map and raster subset is tested and frozen on the Mac and in CI. P05's optional ML group has branch CI evidence but remains pending Mac verification and dependency review. Other optional packages remain candidates.** Do not silently substitute prereleases or `latest` tags.
 
 ## Runtime choices
 
@@ -77,15 +77,15 @@ GitHub Actions revisions are pinned to official v6 commit SHAs verified through 
 - The provider uses Python's standard-library HTTPS client; no extra runtime HTTP library is needed for this bounded adapter. The proposed production httpx dependency remains uninstalled.
 - npm audit reported zero known vulnerabilities after these additions. This is a point-in-time advisory check, not a full security certification.
 - The map is a separate lazy-loaded chunk. Vite still warns that it exceeds 500 kB (about 1.03 MB minified / 278 kB gzip, plus a 510 kB worker). Do not claim a mobile performance budget has passed.
-- Local WebGL rendering and point/list selection are checked separately from the compiler. Raster processing and the optional ML environment remain unverified.
+- Local WebGL rendering and point/list selection are checked separately from the compiler. Raster processing was unverified at P02; see the later P03/P04 Mac verification below. The optional ML environment remains pending Mac verification.
 
 ## P03 additions — 27 September 2026 IST (branch `p03-context`)
 
 - Backend: **rasterio 1.5.1** (BSD-3-Clause; bundled **GDAL 3.12.4**) and **numpy 2.5.3** (BSD-3-Clause and bundled permissive licences). New transitive packages: affine 3.0.1 (BSD-3-Clause), attrs 26.1.0 (MIT), certifi 2026.7.22 (MPL-2.0), pyparsing 3.3.3 (MIT). PyPI reported zero known vulnerabilities for all six at lock time.
-- rasterio's macOS arm64 wheel is tagged **macOS 14.0 or newer**. The owner's Mac has not yet run `make install` with this lock; if it is older than macOS 14, the install fails and needs a decision (upgrade macOS or a system-GDAL build). Linux x86_64 is verified by CI.
+- rasterio's macOS arm64 wheel is tagged **macOS 14.0 or newer**. Frozen installation and actual raster reads now pass on the owner's macOS 26.3 arm64 machine. Linux x86_64 is verified by CI; older Macs still need a compatible environment.
 - Frontend: `@types/geojson` **7946.0.16** is now a declared dev dependency (already present transitively via MapLibre). TypeScript 7 no longer loads global `@types` packages without a declaration.
 - WorldCover reads use GDAL's `/vsicurl/` with directory listing disabled, `.tif` only, 30 s timeout and two retries. In a proxied environment, GDAL needs `CURL_CA_BUNDLE` pointing at the proxy CA; the owner's Mac needs nothing extra.
-- Verified in a Linux cloud workspace (Python 3.13.15, Node 24.21.0, uv 0.12.19, the same digest-pinned PostGIS) and in GitHub Actions. Not yet verified on the owner's Mac.
+- Verified in a Linux cloud workspace (Python 3.13.15, Node 24.21.0, uv 0.12.19, the same digest-pinned PostGIS) and in GitHub Actions. P03/P04 were subsequently verified on the owner's Mac: 106 unit/API tests, 15 PostGIS integration tests, actual OSM and WorldCover reads, and the built browser flow. See `docs/EVIDENCE.md`. XGBoost/OpenMP is a separate P05 check, not covered by these results.
 
 ## P05 additions — 27 September 2026 IST
 

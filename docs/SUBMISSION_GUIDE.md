@@ -4,7 +4,7 @@ Prepared from the official 2026 sources and the team's current artifacts. This i
 
 ## Immediate priority
 
-The [2026 guidelines](https://sih.gov.in/letters/2026/SIH%202026%20Guidelines.pdf) give 30 September 2026 as the submission deadline and cap ideas per PS at 500. The [public table](https://www.sih.gov.in/sih2026PS) showed 93/500 for SIH26162 at approximately 23:31 IST on 25 September. Recheck at submission; being below the cap now does not reserve a place.
+The [2026 guidelines](https://sih.gov.in/letters/2026/SIH%202026%20Guidelines.pdf) give 30 September 2026 as the submission deadline and cap ideas per PS at 500. The [public table](https://www.sih.gov.in/sih2026PS), inspected in the browser at approximately 21:58 IST on 27 September, showed **140/500** and **30 September 2026** for SIH26162. This replaces the older 93/500 snapshot. Recheck at submission; being below the cap now does not reserve a place. Signed-in portal constraints have not yet been verified.
 
 Use the [official presentation template](https://sih.gov.in/letters/2026/SIH2026-IDEA-Presentation-Format.pptx): retain the six content positions and their headings, remove its final instruction page, and submit a PDF. The instruction page limits the presentation to six slides including the title. Signed-in portal limits, optional links and editing after submission are still unverified.
 

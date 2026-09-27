@@ -32,7 +32,7 @@ ATTRIBUTION = (
     "processed by ESA WorldCover consortium"
 )
 ACCURACY_NOTE = "Global overall accuracy 76.7 ± 0.5 % (WorldCover 2021 v200 validation report)"
-SUMMARY_VERSION = "landcover-summary-v1"
+SUMMARY_VERSION = "landcover-summary-v2"
 TILE_PREFIX = "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/"
 NODATA = 0
 CLASSES = {
@@ -102,18 +102,44 @@ def summarize_array(array, transform, lon, lat, radius_m: float) -> dict:
     }
 
 
+# Bounded-pilot limits (ADR-020): one observation window and one cached multi-point block.
+MAX_WINDOW_PIXELS = 5_000_000
+MAX_BLOCK_PIXELS = 200_000_000  # about 200 MB of uint8; larger blocks fall back to single reads
+
+
+def check_request(radius_m: float, lat: float):
+    if not 0 < radius_m <= 5000 or not -85 < lat < 85:
+        raise IngestError("RASTER_WINDOW_OUTSIDE_PILOT_LIMITS")
+
+
+def check_layout(dataset):
+    if (
+        dataset.crs is None
+        or dataset.crs.to_epsg() != 4326
+        or dataset.count != 1
+        or dataset.transform.b != 0
+        or dataset.transform.d != 0
+        or dataset.transform.a <= 0
+        or dataset.transform.e >= 0
+        or dataset.dtypes[0] != "uint8"
+    ):
+        raise IngestError("UNSUPPORTED_RASTER")
+
+
 def read_window(source: str, lon: float, lat: float, radius_m: float):
     """Read a square window around the point; outside-tile pixels are filled as nodata."""
+    check_request(radius_m, lat)
     m_lat, m_lon = metres_per_degree(lat)
     dlat, dlon = radius_m / m_lat * 1.05, radius_m / m_lon * 1.05
     path = source if not source.startswith("https://") else "/vsicurl/" + source
     if source.startswith("https://") and not source.startswith(TILE_PREFIX):
         raise IngestError("ENDPOINT_NOT_ALLOWED")
     with rasterio.Env(**GDAL_OPTIONS), rasterio.open(path) as dataset:
-        if dataset.crs is None or dataset.crs.to_epsg() != 4326 or dataset.count != 1:
-            raise IngestError("UNSUPPORTED_RASTER")
+        check_layout(dataset)
         window = from_bounds(lon - dlon, lat - dlat, lon + dlon, lat + dlat, dataset.transform)
         window = window.round_offsets().round_lengths()
+        if window.width * window.height > MAX_WINDOW_PIXELS:
+            raise IngestError("RASTER_WINDOW_TOO_LARGE")
         array = dataset.read(1, window=window, boundless=True, fill_value=NODATA)
         transform = dataset.window_transform(window)
         b = dataset.bounds
@@ -141,10 +167,11 @@ class TileCache:
         east = max(lon for lon, _ in points) + dlon
         south, north = min(lats) - dlat, max(lats) + dlat
         with rasterio.Env(**GDAL_OPTIONS), rasterio.open(path) as dataset:
-            if dataset.crs is None or dataset.crs.to_epsg() != 4326 or dataset.count != 1:
-                raise IngestError("UNSUPPORTED_RASTER")
+            check_layout(dataset)
             window = from_bounds(west, south, east, north, dataset.transform)
             window = window.round_offsets().round_lengths()
+            if window.width * window.height > MAX_BLOCK_PIXELS:
+                return  # too large to cache; each observation is read on its own
             array = dataset.read(1, window=window, boundless=True, fill_value=NODATA)
             self.blocks[source] = (
                 array.astype(np.uint8),
@@ -154,6 +181,7 @@ class TileCache:
             )
 
     def read(self, source: str, lon: float, lat: float, radius_m: float):
+        check_request(radius_m, lat)
         if source not in self.blocks:
             return read_window(source, lon, lat, radius_m)
         block, outer, base, b = self.blocks[source]
@@ -161,6 +189,8 @@ class TileCache:
         dlat, dlon = radius_m / m_lat * 1.05, radius_m / m_lon * 1.05
         window = from_bounds(lon - dlon, lat - dlat, lon + dlon, lat + dlat, base)
         window = window.round_offsets().round_lengths()
+        if window.width * window.height > MAX_WINDOW_PIXELS:
+            raise IngestError("RASTER_WINDOW_TOO_LARGE")
         row = int(window.row_off - outer.row_off)
         col = int(window.col_off - outer.col_off)
         if (
@@ -244,24 +274,30 @@ def extract_landcover(
             ).all()
         cache = TileCache()
         by_tile: dict[str, list] = {}
-        for _, lon, lat, _, _ in rows:
-            by_tile.setdefault(resolve(tile_id(lon, lat)), []).append((lon, lat))
+        widest: dict[str, float] = {}
+        for _, lon, lat, scan, track in rows:
+            source = resolve(tile_id(lon, lat))
+            by_tile.setdefault(source, []).append((lon, lat))
+            radius = max(CONTEXT_RADIUS_M, support_radius_m(scan, track)[0])
+            widest[source] = max(widest.get(source, 0.0), radius)
         for source, points in by_tile.items():
-            if len(points) > 1:
+            if len(points) > 1 and widest[source] <= 5000:
                 try:
-                    cache.prepare(source, points, CONTEXT_RADIUS_M)
+                    cache.prepare(source, points, widest[source])
                 except (IngestError, rasterio.errors.RasterioError, OSError):
                     pass  # fall back to per-observation reads, which record their own failure
         for observation_id, lon, lat, scan, track in rows:
             tile = tile_id(lon, lat)
             source = resolve(tile)
+            support_radius, basis = support_radius_m(scan, track)
             try:
-                array, transform, clipped = cache.read(source, lon, lat, CONTEXT_RADIUS_M)
+                array, transform, clipped = cache.read(
+                    source, lon, lat, max(CONTEXT_RADIUS_M, support_radius)
+                )
             except (IngestError, rasterio.errors.RasterioError, OSError) as error:
                 code = error.code if isinstance(error, IngestError) else "RASTER_READ_FAILED"
                 failed.append({"observation_id": observation_id, "error_code": code})
                 continue
-            support_radius, basis = support_radius_m(scan, track)
             support = summarize_array(array, transform, lon, lat, support_radius)
             context = summarize_array(array, transform, lon, lat, CONTEXT_RADIUS_M)
             window_sha = hashlib.sha256(
