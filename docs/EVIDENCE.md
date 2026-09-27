@@ -22,7 +22,7 @@ This ledger records completed verification, not planned checks. Large audit down
 
 ## Not yet performed
 
-Programmatic Earthdata download, model training/evaluation, cloud deployment, offline basemap replay, cloud restore and SIH submission remain unperformed. Completed P01/P02 local ingestion, storage, API and browser evidence is recorded below.
+Programmatic Earthdata download, model evaluation on reviewed labels (the P05 pipeline exists and refuses to report without them), cloud deployment, offline basemap replay, cloud restore and SIH submission remain unperformed. Completed P01/P02 local ingestion, storage, API and browser evidence is recorded below.
 
 ## FIRMS access check — 26 September 2026
 
@@ -152,3 +152,27 @@ Base `31f0498` (P03 handoff). Commits `9c1f788` (history and rules), `8357770` (
 | Secret scan | Workspace database password: zero matches in each diff; no FIRMS key in the cloud workspace | The Mac `.env` was read only inside the bridge shell |
 
 Open items: thresholds need calibration on reviewed cases (P05); 180-day windows are ~50% covered until the SP archive is added; the Mac run; the P03 hard-case review.
+
+## P05 implementation and verification — 27 September 2026 IST (branch `p05-model`)
+
+Base `f7e99dc` (P04 handoff). Commits `c17a888` (data, events v2, batch jobs), `ad882aa` (labels, API, model pipeline), `f62d15c` (review page), plus the documentation checkpoint containing this record. Linux x86_64 cloud workspace, Python 3.13.15, PostGIS 18-3.6 (digest-pinned), Node 24.21.0. **Not run on the owner's Mac.**
+
+| Check | Observed result | Scope / limitation |
+|---|---|---|
+| FIRMS retrieval | 464 of 464 bounded requests HTTP 200 (SP 30 Mar–30 Jun for 14 regions; NRT 1 Jul–25 Sep for 11 new regions), 09:26–09:56 UTC; key read inside the bridge shell, piped to curl, never printed; each response checked for it | Hashes in `docs/inventory/p05-firms-files.csv`, re-verified before import |
+| FIRMS import | 464 runs `SUCCEEDED`, 23,746 inserted, 0 quarantined | Historical replay; availability unknown by design |
+| OSM | 11 new snapshots imported: 10 `SUCCEEDED`, Mumbai `PARTIAL` (2 unclosed area ways quarantined) | Two Mumbai attempts were truncated at 50 s and rejected before a 160 s attempt succeeded |
+| GPPD | `global_power_plant_database.csv` v1.3.0, SHA-256 `4b1f93e0…ba7fc`; re-downloaded at 10:33 UTC with the identical hash; 388 Indian thermal plants imported | Registry dated 2021 |
+| Events `event-site-v2` | 14 regions, 23,991 inputs → 10,318 episodes, 6,774 sites in 53 s (earlier attempt hit the 2 s API timeout; fixed with batch jobs and an indexed pair query) | Groupings, not confirmed fires |
+| Case set `p05-pilot-v1` | 10,318 cases, 2,462 site groups, TRAIN 6,481 / VALIDATION 2,050 / TEST 1,787; **0 site groups span two splits**; manifest SHA-256 `fd1e627a…27068` | An earlier build (same splits, TEST-first review order) was deleted before any review and rebuilt with the interleaved order |
+| Land cover and features | WorldCover summaries for all 10,318 representatives (0 failed); features for 10,318 cases in 9 m 27 s; 9,628 rule labels, 240 registry corroborations | Singrauli and Talcher have no case within 1.5 km of a registered plant |
+| Training, reviewed policy | `INSUFFICIENT_LABELS` (model version `b7ab65fd…`, artifact manifest `2e860f04…`): 33 industrial / 0 non-industrial training cases, 0 GOLD test cases | Correct refusal |
+| Training, `--dry-run-weak` | `DRY_RUN_NOT_EVIDENCE` (`6a6adc6e…`, `256d428c…`), 6,103 train / 1,892 validation / 1,659 test rule-labelled cases, 4.4 s; model card withholds scores; metrics carry a do-not-quote notice | Circular by design: proves only that the pipeline runs |
+| `make check` | Ruff clean; **133 passed** (new: split/group, review order, tiers, kappa, review validation, token/CORS, feature leakage guard, metrics, abstention, calibration, group bootstrap, dry-run card, synthetic end-to-end training); Prettier; `tsc`; Vite build (review page is a separate 14 kB chunk) | Map chunk still over 500 kB |
+| `make integration` | **13 passed** (new: registry import idempotency/conflict, case-set freeze and manifest hash, features, blind case payload, two reviews → disagreement → adjudication, duplicate and excess reviews refused, summary, training gate and artifacts; NRT+SP one stream and overlap refusal) | Disposable databases |
+| Saved-data importer | Scratch database: 2 FIRMS files + 1 OSM response imported, second run inserted 0 | Then dropped |
+| API timing (10,318 cases) | Queue 0.12–0.16 s, summary 0.06 s, blind case 0.04 s | Local workspace |
+| Browser (headless Chromium) | Review page at 1440 px and 390 px: queue, blind evidence, detections table, validation message, wrong token → "The review token was not accepted.", navigation back to observations; no page errors (only the expected 401 and SwiftShader WebGL warnings). Screenshots outside Git: `review-case-wide.png` `6c78caeb…`, `review-case-phone.png` `e1fb009d…`, `review-case2-wide.png` `5a594031…`, `review-validate-wide.png` `c25e67e0…` | **No review was submitted to the real case set**: labels come only from people |
+| Fixes found during verification | Aborted requests shown as errors under React StrictMode; date suffix comma; queue wording; review order starved training/validation until all TEST cases were done (now interleaved); registry re-import with a different file under the same version (now refused); queue matched reviewer names case-sensitively | All re-checked |
+
+Open items: human reviews (about 460 to report, 1,100 to promote — rough estimate from rule labels); a Mac run (XGBoost may need `libomp`); a held-out-region protocol.

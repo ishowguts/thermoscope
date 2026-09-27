@@ -103,6 +103,28 @@ done
 
 A new machine without those files must fetch its own bounded history with `make ingest ARGS="fetch --region <r> --start-date YYYY-MM-DD --days 5"` (1–5 days per request) and record the hashes. The assessment is computed on request; nothing needs rebuilding when history grows, except events.
 
+## Labels and model (P05)
+
+Needs the optional model libraries: `make install-ml` (macOS may also need `brew install libomp`). Run after the P03/P04 context steps; each command prints a JSON report.
+
+The P05 data are 464 saved FIRMS files (NOAA-20 SP 30 March–30 June for all 14 regions, NRT 1 July–25 September for the 11 new regions) in ignored `local/p05-fetch/raw/`, and 14 Overpass responses in `local/context-fetch/`, all with `.meta.json` sidecars (hashes in `COVERAGE_INVENTORY.md` and `docs/inventory/p05-firms-files.csv`). Import them first; re-running is safe:
+
+```bash
+make migrate                                            # 0006_labels_models
+PYTHONPATH=backend bash scripts/run.sh uv run --frozen python scripts/import_saved.py \
+    --firms-dir local/p05-fetch/raw --osm-dir local/context-fetch
+# Registry evidence: WRI Global Power Plant Database v1.3.0 CSV (see DATA_SOURCES)
+make ml ARGS="import-gppd --file local/registry/gppd.csv --sha256 4b1f93e0fd93664f18684d9b05d0a52ed9658c6a8cf0d21ff2520791379ba7fc --retrieved-at 2026-09-27T09:40:00+00:00"
+make ml ARGS="build-cases --name p05-pilot-v1"          # freezes cases, splits and review order
+make ml ARGS="landcover --case-set p05-pilot-v1"        # WorldCover for each case's representative detection
+make ml ARGS="features --case-set p05-pilot-v1"         # about 10 minutes for 10,318 cases
+make ml ARGS="summary --case-set p05-pilot-v1"          # label tiers, reviewed test labels, agreement
+make ml ARGS="train --case-set p05-pilot-v1"            # INSUFFICIENT_LABELS until reviews exist
+make ml ARGS="train --case-set p05-pilot-v1 --dry-run-weak"   # pipeline check only, never evidence
+```
+
+Blind review: set `ANNOTATION_TOKEN` in `.env` to a long random value (share it with reviewers privately; never commit it), restart `make dev-api`, open `http://127.0.0.1:5173/#/review`, enter a name and work down the queue. Each review needs at least one evidence link unless the answer is "cannot decide". Test cases get two independent reviews; disagreements go to a third person. Endpoints: `GET /api/v1/annotation/case-sets`, `GET /api/v1/annotation/{set}/queue?reviewer=`, `GET /api/v1/annotation/{set}/cases/{case_id}`, `POST /api/v1/annotation/{set}/reviews` (header `X-Annotation-Token`), `GET /api/v1/annotation/{set}/summary`, `GET /api/v1/models`.
+
 ## Database checks and lifecycle
 
 `make integration` creates a uniquely named `thermoscope_test_<uuid>` database on the configured loopback PostgreSQL server, applies the migration, checks geography and constraints, rolls it back/reapplies it, then drops only that test database. The configured development database is never rolled back or dropped. Test credentials therefore need local database-creation and PostGIS-extension permission; these are development privileges, not the planned production API role.

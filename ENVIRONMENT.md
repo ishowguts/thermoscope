@@ -86,3 +86,10 @@ GitHub Actions revisions are pinned to official v6 commit SHAs verified through 
 - Frontend: `@types/geojson` **7946.0.16** is now a declared dev dependency (already present transitively via MapLibre). TypeScript 7 no longer loads global `@types` packages without a declaration.
 - WorldCover reads use GDAL's `/vsicurl/` with directory listing disabled, `.tif` only, 30 s timeout and two retries. In a proxied environment, GDAL needs `CURL_CA_BUNDLE` pointing at the proxy CA; the owner's Mac needs nothing extra.
 - Verified in a Linux cloud workspace (Python 3.13.15, Node 24.21.0, uv 0.12.19, the same digest-pinned PostGIS) and in GitHub Actions. Not yet verified on the owner's Mac.
+
+## P05 additions — 27 September 2026 IST
+
+- Optional `ml` dependency group (`make install-ml`, i.e. `uv sync --frozen --group ml`): scikit-learn **1.9.1** (BSD-3-Clause) and XGBoost **3.4.1** (Apache-2.0) — the `xgboost` wheel on macOS, `xgboost-cpu` on Linux through a platform marker. Resolved transitives: SciPy 1.18.1, joblib 1.6.0, threadpoolctl 3.7.0, cloudpickle 3.1.2, narwhals 2.26.0 (BSD/MIT). The CPU-only Linux build avoids the NVIDIA communication libraries that the default Linux wheel pulls in. No advisory scan was run for this group.
+- `uv run` keeps the extra group once installed. Tests needing XGBoost or scikit-learn skip when the group is absent, so `make check` still runs without it; CI installs it.
+- Verified on Linux x86_64 (cloud workspace, Python 3.13.15). **Not yet verified on the owner's Mac**: XGBoost on macOS loads the OpenMP runtime, which may require `brew install libomp`.
+- PostgreSQL batch jobs (event builds, case sets, features) use a 10-minute statement timeout; API requests keep 2 seconds.
