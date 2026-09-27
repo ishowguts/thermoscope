@@ -75,18 +75,23 @@ function suggestKind(url: string): { kind: string; date: string } | null {
   } catch {
     return null;
   }
-  const host = parsed.hostname.toLowerCase();
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
   if (
-    /(^|\.)(openstreetmap\.org|osm\.org|firms\.modaps\.eosdis\.nasa\.gov|esa-worldcover\.org|wri\.org)$/.test(
+    /(^|\.)(openstreetmap\.org|osm\.org|modaps\.eosdis\.nasa\.gov|esa-worldcover\.org|wri\.org)$/.test(
       host,
     ) ||
-    (host === "github.com" &&
+    host.includes("overpass") ||
+    parsed.pathname.toLowerCase().includes("/overpass") ||
+    ((host === "github.com" || host === "raw.githubusercontent.com") &&
       parsed.pathname.startsWith("/wri/global-power-plant-database"))
   )
     return { kind: "PROJECT_INPUT", date: "" };
   if (
     host.startsWith("maps.google.") ||
     host === "earth.google.com" ||
+    /(^|\.)(goo\.gl|arcgis\.com|arcgisonline\.com|wikimapia\.org|maps\.apple\.com)$/.test(
+      host,
+    ) ||
     ((host.includes("google.") || host.includes("bing.com")) &&
       parsed.pathname.startsWith("/maps"))
   )

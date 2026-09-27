@@ -195,6 +195,8 @@ def test_training_reports_baselines_intervals_and_never_promotes_small_tests(mon
     monkeypatch.setattr(ml, "case_set_id", lambda conn, ref: "set")
     monkeypatch.setattr(ml, "superseded_by", lambda conn, set_id: None)
     monkeypatch.setattr(ml, "case_set_grouping", lambda conn, set_id: "facility-aware-v1")
+    safe = {"facilities_crossing_splits": 0, "safe_for_unseen_site_claims": True}
+    monkeypatch.setattr(ml, "grouping_audit", lambda settings, ref: safe)
     monkeypatch.setattr(ml, "load_training_rows", lambda conn, set_id: synthetic_rows())
 
     def fake_save(settings, set_id, run_id, out_dir, report, model, predictions, policy,
@@ -235,6 +237,13 @@ def test_training_reports_baselines_intervals_and_never_promotes_small_tests(mon
     assert policy["cases_eligible"] == len(rows) - 8
     assert sum(policy["cases_excluded_by_split"].values()) == 8
 
+    # A grouping that lets a facility cross splits cannot be evaluated.
+    unsafe = {"facilities_crossing_splits": 3, "safe_for_unseen_site_claims": False}
+    monkeypatch.setattr(ml, "grouping_audit", lambda settings, ref: unsafe)
+    with pytest.raises(ValueError, match="cross splits"):
+        ml.train_and_evaluate(settings, "set")
+    monkeypatch.setattr(ml, "grouping_audit", lambda settings, ref: safe)
+
     # A superseded case set cannot be evaluated at all.
     monkeypatch.setattr(ml, "superseded_by", lambda conn, set_id: "newer-set")
     with pytest.raises(ValueError, match="superseded"):
@@ -262,3 +271,16 @@ def test_known_site_future_needs_reviewed_support_in_both_periods():
     for r in rows:
         r["resolved"] = r["resolved"] | {"test_eligible": False}
     assert known_site_future(rows, False)["status"] == "INSUFFICIENT_LABELS"
+
+
+def test_history_features_never_look_past_the_90_day_window():
+    from thermoscope.assessment import Coverage, Detection
+    from thermoscope.ml import prior_history
+
+    start = datetime(2026, 9, 1, tzinfo=UTC)
+    old = Detection("old", start - timedelta(days=150), 3.0, "N20", "N", "VIIRS_NOAA20_SP", None)
+    runs = [Coverage((start - timedelta(days=200)).date(), start.date(), None)]
+    features = prior_history([old], runs, start)
+    assert features["days_since_last"] == 90.0  # censored, not 150
+    assert features["active_days_90"] == 0 and features["coverage_90"] == 1.0
+    assert prior_history([], runs, start)["days_since_last"] == 90.0

@@ -110,6 +110,10 @@ def test_tiers_gold_needs_evidence_and_test_needs_two_agreeing_reviews():
     # A source seen only near the pixel area leaves the label geographically uncertain.
     nearby = resolve_label([review("INDUSTRIAL", location="NEARBY_ONLY")], 1, None, None)
     assert nearby["tier"] == "SILVER"
+    half_sure = resolve_label(
+        [review("INDUSTRIAL"), review("INDUSTRIAL", who="b", location="UNSURE")], 2, None, None
+    )
+    assert half_sure["tier"] == "SILVER"  # every agreeing reviewer must place it inside
     legacy = {"source_label": "OTHER", "role": "REVIEWER", "reviewer": "z", "certainty": "HIGH",
               "evidence": [URL]}  # fmt: skip
     assert resolve_label([legacy], 1, None, None)["tier"] == "SILVER"  # unknown format
@@ -139,6 +143,34 @@ def test_evidence_policy_is_decided_by_the_server():
     assert forced_kind("https://www.google.com/maps/@22.3,69.8,1200m") == "UNDATED_BASEMAP"
     assert forced_kind("https://www.google.com/search?q=refinery") is None
     assert forced_kind(URL) is None
+    for trick in (
+        "https://www.openstreetmap.org./way/1",
+        "https://firms2.modaps.eosdis.nasa.gov/",
+        "https://overpass-turbo.eu/?Q=x",
+        "https://maps.mail.ru/osm/tools/overpass/api",
+        "https://raw.githubusercontent.com/wri/global-power-plant-database/x.csv",
+    ):
+        assert forced_kind(trick) == "PROJECT_INPUT", trick
+    for basemap in ("https://maps.app.goo.gl/abc", "https://www.arcgis.com/apps/mapviewer"):
+        assert forced_kind(basemap) == "UNDATED_BASEMAP", basemap
+    assert forced_kind("https://openstreetmap.org.example.com/x") is None  # not the real host
+    with pytest.raises(ValueError, match="date"):
+        assess_evidence(
+            [
+                {
+                    "url": "https://worldview.earthdata.nasa.gov/?v=1,2,3,4",
+                    "kind": "DATED_IMAGERY",
+                    "observed_on": "2026-05-01",
+                }
+            ],
+            START,
+            START,
+        )
+    thermal_only = URL + "&l=VIIRS_NOAA20_Thermal_Anomalies_375m_All"
+    with pytest.raises(ValueError, match="thermal"):
+        assess_evidence([IMAGERY | {"url": thermal_only}], START, START)
+    both = URL + "&l=VIIRS_NOAA20_CorrectedReflectance_TrueColor,VIIRS_NOAA20_Thermal_Anomalies"
+    assert assess_evidence([IMAGERY | {"url": both}], START, START)["independent"]
     with pytest.raises(ValueError, match="PROJECT_INPUT"):
         assess_evidence([{"url": OSM_LINK["url"], "kind": "DATED_IMAGERY",
                           "observed_on": "2026-05-01"}], START, START)  # fmt: skip
@@ -155,6 +187,11 @@ def test_evidence_policy_is_decided_by_the_server():
               "licence": "link only"}  # fmt: skip
     checked = assess_evidence([news, report], START, START)
     assert checked["independent"] and checked["claim_scope"] == "SOURCE_IDENTITY_ONLY"
+    assert checked["items"][1]["verification"] == "REVIEWER_ATTESTED"  # recorded, not checked
+    official = {"url": "https://cpcb.nic.in/report.pdf", "kind": "OFFICIAL_OR_COMPANY"}
+    assert assess_evidence([official], START, START)["items"][0]["verification"] == (
+        "OFFICIAL_DOMAIN"
+    )
     assert assess_evidence([IMAGERY], START, START)["independent"]
     assert not assess_evidence([IMAGERY], None, None)["independent"]  # form check only
 

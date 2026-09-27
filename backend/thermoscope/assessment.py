@@ -112,15 +112,36 @@ def product_family(product: str) -> tuple[str, ...]:
     return NOAA20_PRODUCTS if product in NOAA20_PRODUCTS else (product,)
 
 
-def reconcile_stream(detections: list[Detection], run_rows) -> tuple[list, list, int]:
-    """Coverage from qualifying runs of the observation's product family. On a UTC day that SP
-    covers (a qualifying SP run, or any SP detection), SP supersedes NRT: that day's NRT
-    detections are dropped so one physical detection is never counted twice.
+def reconcile_stream(
+    detections: list[Detection], run_rows, as_of: datetime | None = None, basis: str = ""
+) -> tuple[list, list, int]:
+    """Coverage from qualifying runs of the observation's product family, with SP taking
+    precedence over NRT so one physical detection is never counted twice:
+    - on a UTC day a qualifying SP run covers, that day's NRT detections are dropped;
+    - otherwise an NRT detection is dropped only when an SP detection has the same acquisition
+      time (the same overpass), so an incomplete SP day never removes other NRT data.
+    An OPERATIONAL replay uses only SP runs and detections already on record by as_of.
     Returns (detections, runs, dropped)."""
-    sp_days = covered_dates([Coverage(*r[:3]) for r in run_rows if r[3] == SP_PRODUCT], None, "")
-    sp_days |= {d.acquired_at.date() for d in detections if d.product == SP_PRODUCT}
+    operational = basis == Basis.OPERATIONAL and as_of is not None
+    sp_runs = [
+        Coverage(*r[:3])
+        for r in run_rows
+        if r[3] == SP_PRODUCT and not (operational and (r[2] is None or r[2] > as_of))
+    ]
+    sp_days = covered_dates(sp_runs, None, "")
+    sp_times = {
+        d.acquired_at
+        for d in detections
+        if d.product == SP_PRODUCT
+        and not (operational and (d.available_at is None or d.available_at > as_of))
+    }
     kept = [
-        d for d in detections if not (d.product == NRT_PRODUCT and d.acquired_at.date() in sp_days)
+        d
+        for d in detections
+        if not (
+            d.product == NRT_PRODUCT
+            and (d.acquired_at.date() in sp_days or d.acquired_at in sp_times)
+        )
     ]
     return kept, [Coverage(*r[:3]) for r in run_rows], len(detections) - len(kept)
 
@@ -624,7 +645,9 @@ def load_inputs(conn, observation_id: str, mode: DataMode, as_of: datetime | Non
     """),
         point | {"mode": mode.value, "family": list(family), "radius": SITE_RADIUS_M},
     ).all()
-    detections, runs, superseded = reconcile_stream([Detection(*row) for row in rows], run_rows)
+    detections, runs, superseded = reconcile_stream(
+        [Detection(*row) for row in rows], run_rows, as_of, basis
+    )
     radius, basis_note = support_radius_m(obs["scan_km"], obs["track_km"])
     snapshot = find_snapshot(
         conn,
@@ -668,7 +691,13 @@ def load_inputs(conn, observation_id: str, mode: DataMode, as_of: datetime | Non
                 }
                 for c in inside
             ],  # fmt: skip
-            "nearby_industrial": len(candidates) - len(inside),
+            # Solar, wind and water power stay visible as candidates but are not counted as
+            # nearby industry in the reasons (ADR-020).
+            "nearby_industrial": sum(
+                1
+                for c in candidates
+                if c["relation"] != "INSIDE_SUPPORT" and c.get("thermal_source_candidate", True)
+            ),
         }
     land = None
     if date.fromisoformat(PUBLISHED_ON) <= as_of.date():

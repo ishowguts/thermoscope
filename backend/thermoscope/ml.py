@@ -46,13 +46,14 @@ from thermoscope.labels import (
     REGISTRY_MATCH_M,
     case_set_grouping,
     case_set_id,
+    grouping_audit,
     registry_matches,
     resolved_labels,
     superseded_by,
 )
 from thermoscope.landcover import observation_landcover
 
-MODEL_VERSION = "xgb-source-binary-v3"
+MODEL_VERSION = "xgb-source-binary-v4"
 # history-eligibility-v1 (ADR-021): only cases whose whole 90-day history window was retrieved
 # (>= 80 % of days, the P04 threshold) are trained or evaluated. Early cases in the archive
 # would otherwise carry truncated history that tracks the season. Fixed before any score.
@@ -173,7 +174,11 @@ def prior_history(detections, runs, started_at) -> dict:
         "overpasses_90": len({(d.acquired_at, d.satellite) for d in w90}),
         "coverage_90": round(cov90, 4),
         "coverage_180": round(cov180, 4),
-        "days_since_last": None if last is None else (started_at - last) / timedelta(days=1),
+        # Censored at the 90-day window: longer look-backs would reach the archive start and
+        # track the season (independent review, ADR-021).
+        "days_since_last": 90.0
+        if last is None
+        else min((started_at - last) / timedelta(days=1), 90.0),
         "history_frp_median_90": median(frp90),
         "history_night_fraction_90": (
             sum(d.daynight == "N" for d in w90) / len(w90) if w90 else None
@@ -553,6 +558,12 @@ def train_and_evaluate(settings: Settings, set_ref: str, *, dry_run_weak: bool =
         all_rows = load_training_rows(conn, set_id)
     if newer:
         raise ValueError(f"case set superseded by {newer}; its grouping is not safe to evaluate")
+    audit = grouping_audit(settings, set_ref)
+    if not audit["safe_for_unseen_site_claims"]:
+        raise ValueError(
+            f"{audit['facilities_crossing_splits']} mapped facilities cross splits; build a "
+            "facility-aware case set before evaluating"
+        )
     if not all_rows:
         raise ValueError("no case features; run the features step first")
     # history-eligibility-v1: incomplete-history cases are set aside, never imputed.
@@ -595,6 +606,9 @@ def train_and_evaluate(settings: Settings, set_ref: str, *, dry_run_weak: bool =
         "support": {"train": support(train), "validation": support(val), "test": support(test)},
         "tiers_used": sorted({r["resolved"]["tier"] for r in train + val + test}),
         "grouping": grouping,
+        "grouping_audit": {
+            k: audit[k] for k in ("facilities_crossing_splits", "safe_for_unseen_site_claims")
+        },  # fmt: skip
         "history_policy": {
             "version": HISTORY_POLICY,
             "rule": f"retrieved-day coverage of the {BASELINE_WINDOW} days before the episode "
@@ -922,7 +936,13 @@ def model_card(report: dict) -> str:
         "",
         "## Evaluation protocols",
         "- Unseen-site: TRAIN / VALIDATION / TEST are disjoint site groups, frozen before "
-        "labelling (facility-aware grouping merges sites near one mapped facility or plant).",
+        "labelling"
+        + (
+            " (facility-aware grouping merges sites near one mapped facility or plant; the "
+            "grouping audit found no facility crossing splits)."
+            if report.get("grouping") == "facility-aware-v1"
+            else f" (grouping `{report.get('grouping')}`)."
+        ),
         "- Held-out region: leave one region out, pooled over regions, uncalibrated.",
         "- Known-site future: trained on earlier cases, tested on later cases at seen sites.",
         "- Group bootstrap intervals resample whole site groups.",

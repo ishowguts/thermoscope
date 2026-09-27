@@ -37,9 +37,19 @@ def test_sp_supersedes_nrt_on_days_it_covers():
     kept, coverage, dropped = reconcile_stream(detections, runs)
     assert dropped == 1 and [d.product for d in kept] == [SP, NRT]
     assert len(coverage) == 2
-    # An SP detection from a partial (non-qualifying) run still suppresses NRT on that day.
-    kept, _, dropped = reconcile_stream([detection(d3, SP), detection(d3, NRT)], [])
-    assert dropped == 1 and kept[0].product == SP
+    # Without a qualifying SP run, only the NRT copy of the same overpass is dropped.
+    morning = Detection("nrt-am", datetime(2026, 7, 1, 9, tzinfo=UTC), 1.0, "N20", "D", NRT, None)
+    kept, _, dropped = reconcile_stream([detection(d3, SP), detection(d3, NRT), morning], [])
+    assert dropped == 1 and [d.id for d in kept] == [f"{SP}-{d3}", "nrt-am"]
+    # An operational replay cannot use SP data that arrived after as_of.
+    as_of = datetime(2026, 7, 2, tzinfo=UTC)
+    late = [(d3, d3, datetime(2026, 9, 1, tzinfo=UTC), SP)]
+    live_nrt = Detection("nrt", datetime(2026, 7, 1, 21, tzinfo=UTC), 2.0, "N20", "N", NRT,
+                         datetime(2026, 7, 1, 23, tzinfo=UTC))  # fmt: skip
+    kept, _, dropped = reconcile_stream([live_nrt], late, as_of, "OPERATIONAL")
+    assert dropped == 0 and kept == [live_nrt]
+    kept, _, dropped = reconcile_stream([live_nrt], late, as_of, "RETROSPECTIVE")
+    assert dropped == 1
 
 
 @pytest.fixture

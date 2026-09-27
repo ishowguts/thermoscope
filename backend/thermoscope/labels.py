@@ -28,7 +28,7 @@ from thermoscope.object_store import ObjectStore
 from thermoscope.regions import NOAA20_FAMILY, REGIONS
 
 CASE_VERSION = "case-v1"
-FEATURE_VERSION = "case-features-v2"
+FEATURE_VERSION = "case-features-v3"  # v3: days_since_last censored at 90 days
 LABEL_POLICY = "label-resolution-v1"
 SPLIT_SEED = "thermoscope-p05-split-v1"
 SPLIT_FRACTIONS = {"TRAIN": 0.6, "VALIDATION": 0.2, "TEST": 0.2}
@@ -53,13 +53,26 @@ INDEPENDENT_KINDS = {"DATED_IMAGERY", "OFFICIAL_OR_COMPANY"}
 # detection's approximate pixel area. Only INSIDE_PIXEL_AREA can support GOLD.
 SOURCE_LOCATIONS = ("INSIDE_PIXEL_AREA", "NEARBY_ONLY", "UNSURE")
 IMAGERY_WINDOW_DAYS = (365, 30)  # imagery dated up to a year before to 30 days after the episode
+# Host suffixes (after lower-casing and removing a trailing dot) whose content is one of
+# ThermoScope's own inputs or the detection itself; any host or path naming "overpass" is an
+# OpenStreetMap query service.
 PROJECT_INPUT_HOSTS = (
-    "openstreetmap.org", "osm.org", "firms.modaps.eosdis.nasa.gov", "esa-worldcover.org",
+    "openstreetmap.org", "osm.org", "modaps.eosdis.nasa.gov", "esa-worldcover.org",
     "worldcover2021.esa.int", "wri.org", "localhost", "127.0.0.1",
 )  # fmt: skip
-PROJECT_INPUT_PATHS = ("github.com/wri/global-power-plant-database", "zenodo.org/records/7254221")
-BASEMAP_HOSTS = ("maps.google.", "earth.google.com", "maps.apple.com")
+PROJECT_INPUT_PATHS = (
+    "github.com/wri/global-power-plant-database",
+    "raw.githubusercontent.com/wri/global-power-plant-database",
+    "zenodo.org/records/7254221",
+)
+BASEMAP_HOSTS = (
+    "maps.google.", "earth.google.com", "maps.apple.com", "goo.gl", "arcgis.com",
+    "arcgisonline.com", "wikimapia.org",
+)  # fmt: skip
 BASEMAP_PATH_HOSTS = ("google.", "bing.com")  # only their /maps pages are basemaps
+OFFICIAL_SUFFIXES = (".gov.in", ".nic.in", ".gov")  # checked; other sources are attested
+# A Worldview view showing only fire/thermal layers repeats the FIRMS detections.
+WORLDVIEW_IMAGERY_MARKERS = ("Reflectance", "TrueColor", "Landsat", "HLS", "Sentinel")
 SOURCE_LABELS = ("INDUSTRIAL", "VEGETATION_FIRE", "AGRICULTURAL_BURN", "OTHER", "UNRESOLVED")
 SUBTYPES = ("GAS_FLARE", "OTHER_PERSISTENT_HEAT", "MINING_HEAT", "UNRESOLVED")
 GPPD = {
@@ -345,9 +358,8 @@ def build_case_set(
         if supersedes:
             previous = (
                 conn.execute(
-                    text("""SELECT s.id,s.name,s.manifest_sha256,
-                        (SELECT count(*) FROM label_reviews r WHERE r.case_set_id=s.id) AS reviews
-                        FROM case_sets s WHERE s.name=:v OR CAST(s.id AS text)=:v"""),
+                    text("""SELECT s.id,s.name,s.manifest_sha256 FROM case_sets s
+                        WHERE s.name=:v OR CAST(s.id AS text)=:v FOR UPDATE"""),
                     {"v": supersedes},
                 )
                 .mappings()
@@ -355,7 +367,12 @@ def build_case_set(
             )
             if previous is None:
                 raise IngestError("UNKNOWN_CASE_SET")
-            if previous["reviews"]:
+            # The row lock serialises this check with review submissions (FOR SHARE there).
+            reviews = conn.execute(
+                text("SELECT count(*) FROM label_reviews WHERE case_set_id=:s"),
+                {"s": previous["id"]},
+            ).scalar_one()
+            if reviews:
                 # Reviews describe episodes and could be carried over, but that needs its own
                 # audited step; never drop or silently re-split reviewed cases.
                 raise IngestError("SUPERSEDED_SET_HAS_REVIEWS")
@@ -542,8 +559,9 @@ def superseded_by(conn, set_id) -> str | None:
 
 
 def grouping_audit(settings: Settings, set_ref: str) -> dict:
-    """Mapped facility areas and registered plants whose nearby cases fall in more than one
-    split: any hit means the set's grouping is unsafe for an unseen-site claim."""
+    """Mapped facilities (areas and points) and registered plants whose nearby cases fall in
+    more than one split: any hit means the set's grouping is unsafe for an unseen-site claim.
+    Stricter than facility-aware-v1 grouping, which merges on areas and plants only."""
     from thermoscope.context import snapshot_provider
 
     with batch_engine(settings) as engine, engine.connect() as conn:
@@ -558,7 +576,7 @@ def grouping_audit(settings: Settings, set_ref: str) -> dict:
             near AS (
                 SELECT 'osm:'||f.osm_type||'/'||f.osm_id AS facility,f.name,c.split,c.split_group
                 FROM label_cases c JOIN snap ON snap.region_id=c.region_id
-                JOIN facilities f ON f.snapshot_id=snap.id AND f.build <> 'POINT'
+                JOIN facilities f ON f.snapshot_id=snap.id
                     AND ST_DWithin(f.geom::geography,c.geom::geography,:buffer)
                 WHERE c.case_set_id=:s
                 UNION ALL
@@ -691,7 +709,10 @@ def resolve_label(reviews: list[dict], review_slots: int, silver: str | None, we
             if label == "UNRESOLVED":
                 return {"label": "UNRESOLVED", "tier": "UNRESOLVED", "basis": "REVIEWERS_UNSURE"}
             gold = any(qualifies(r) for r in reviewers) and all(
-                r.get("certainty") in {"HIGH", "MEDIUM"} for r in reviewers
+                r.get("certainty") in {"HIGH", "MEDIUM"}
+                and isinstance(r.get("evidence"), dict)
+                and r["evidence"].get("source_location") == "INSIDE_PIXEL_AREA"
+                for r in reviewers
             )
             return {"label": label, "tier": "GOLD" if gold else "SILVER",
                     "basis": "TWO_REVIEWERS_AGREE"}  # fmt: skip
@@ -953,10 +974,13 @@ def review_case(settings: Settings, set_ref: str, case_id: str) -> dict | None:
 def forced_kind(url: str) -> str | None:
     """Links that can only be one evidence type, whatever the reviewer selects."""
     parsed = urlsplit(url)
-    host = (parsed.hostname or "").lower()
+    host = link_host(url)
     where = host + parsed.path.lower()
-    if any(host == h or host.endswith("." + h) for h in PROJECT_INPUT_HOSTS) or any(
-        where.startswith(p) for p in PROJECT_INPUT_PATHS
+    if (
+        any(host == h or host.endswith("." + h) for h in PROJECT_INPUT_HOSTS)
+        or any(where.startswith(p) for p in PROJECT_INPUT_PATHS)
+        or "overpass" in host
+        or "/overpass" in parsed.path.lower()
     ):
         return "PROJECT_INPUT"
     if any(h in host for h in BASEMAP_HOSTS) or (
@@ -966,16 +990,31 @@ def forced_kind(url: str) -> str | None:
     return None
 
 
+def link_host(url: str) -> str:
+    return (urlsplit(url).hostname or "").lower().rstrip(".")
+
+
+def is_worldview(url: str) -> bool:
+    host = link_host(url)
+    return host == "worldview.earthdata.nasa.gov"
+
+
 def url_date(url: str) -> date | None:
     """The imagery date encoded in a NASA Worldview link (t=YYYY-MM-DD...)."""
-    parsed = urlsplit(url)
-    if not (parsed.hostname or "").endswith("worldview.earthdata.nasa.gov"):
+    if not is_worldview(url):
         return None
-    value = parse_qs(parsed.query).get("t", [""])[0][:10]
+    value = parse_qs(urlsplit(url).query).get("t", [""])[0][:10]
     try:
         return date.fromisoformat(value)
     except ValueError:
         return None
+
+
+def worldview_shows_imagery(url: str) -> bool:
+    """True unless the link lists layers and none of them is reflectance imagery."""
+    layers = parse_qs(urlsplit(url).query).get("l", [""])[0]
+    names = [x for x in layers.split(",") if x]
+    return not names or any(m in x for x in names for m in WORLDVIEW_IMAGERY_MARKERS)
 
 
 def assess_evidence(items, started_at: datetime | None, as_of: datetime | None) -> dict:
@@ -1006,8 +1045,16 @@ def assess_evidence(items, started_at: datetime | None, as_of: datetime | None) 
         encoded = url_date(url)
         if kind == "DATED_IMAGERY" and observed is None:
             raise ValueError("dated imagery needs the imagery date")
-        if kind == "DATED_IMAGERY" and encoded and encoded != observed:
-            raise ValueError("the imagery date must match the date in the Worldview link")
+        if kind == "DATED_IMAGERY" and is_worldview(url):
+            if encoded is None:
+                raise ValueError("a Worldview link needs its date (t=YYYY-MM-DD) in the link")
+            if encoded != observed:
+                raise ValueError("the imagery date must match the date in the Worldview link")
+            if not worldview_shows_imagery(url):
+                raise ValueError(
+                    "this Worldview view shows only fire or thermal layers, which repeat the "
+                    "FIRMS detections; add a true-colour or reflectance layer"
+                )
         licence = str(item.get("licence") or "").strip()[:120] or None
         if kind == "DATED_IMAGERY":
             independent = bool(lowest and highest and lowest <= observed <= highest)
@@ -1026,10 +1073,19 @@ def assess_evidence(items, started_at: datetime | None, as_of: datetime | None) 
                 "PROJECT_INPUT": "same data ThermoScope already uses; not independent",
                 "OTHER": "unclassified source; not sufficient alone",
             }[kind]
+        host = link_host(url)
+        if forced:
+            verification = "HOST_RULE"
+        elif kind == "DATED_IMAGERY" and encoded:
+            verification = "DATE_IN_LINK"
+        elif kind == "OFFICIAL_OR_COMPANY" and any(host.endswith(x) for x in OFFICIAL_SUFFIXES):
+            verification = "OFFICIAL_DOMAIN"
+        else:
+            verification = "REVIEWER_ATTESTED"  # type and date as stated by the reviewer
         checked.append({"url": url, "kind": kind,
                         "observed_on": observed.isoformat() if observed else None,
                         "licence": licence, "independent": independent,
-                        "reason": reason})  # fmt: skip
+                        "verification": verification, "reason": reason})  # fmt: skip
     return {
         "policy": EVIDENCE_POLICY,
         "claim_scope": "SOURCE_IDENTITY_ONLY",
@@ -1064,6 +1120,7 @@ def submit_review(settings: Settings, set_ref: str, payload: dict) -> dict:
         raise ValueError("say where the source is relative to the pixel area")
     with database_engine(settings) as engine, engine.begin() as conn:
         set_id = case_set_id(conn, set_ref)
+        conn.execute(text("SELECT 1 FROM case_sets WHERE id=:s FOR SHARE"), {"s": set_id})
         newer = superseded_by(conn, set_id)
         if newer:
             raise CaseSetSuperseded(f"this case set was replaced by {newer}; review there")
