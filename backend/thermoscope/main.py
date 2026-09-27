@@ -1,20 +1,33 @@
+import hmac
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import uuid4
 
-from fastapi import FastAPI, Path, Query, Request
+from fastapi import FastAPI, Header, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import SQLAlchemyError
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from thermoscope.assessment import observation_assessment, observation_timeline
 from thermoscope.config import DataMode, Settings
 from thermoscope.context import facilities_geojson, observation_context
 from thermoscope.database import check_readiness
 from thermoscope.events import event_detail, list_events
+from thermoscope.firms import IngestError
+from thermoscope.labels import (
+    SOURCE_LABELS,
+    SUBTYPES,
+    label_summary,
+    list_case_sets,
+    models_list,
+    review_case,
+    review_queue,
+    submit_review,
+)
 from thermoscope.observations import catalog, list_observations, query_params
 from thermoscope.regions import Bounds, Product
 
@@ -24,6 +37,22 @@ class AssessmentBasis(StrEnum):
     OPERATIONAL = "OPERATIONAL"
 
 
+CASE_SET = Path(pattern="^[a-z0-9][a-z0-9_-]{2,60}$|^[0-9a-f-]{36}$")
+REVIEWER = Query(min_length=2, max_length=60, pattern=r"^[\w .'-]{2,60}$")
+
+
+class ReviewIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    case_id: str = Field(pattern="^[0-9a-f]{64}$")
+    reviewer: str = Field(min_length=2, max_length=60)
+    source_label: Literal[SOURCE_LABELS]
+    industrial_subtype: Literal[SUBTYPES] | None = None
+    certainty: Literal["HIGH", "MEDIUM", "LOW"]
+    evidence: list[str] = Field(default_factory=list, max_length=5)
+    evidence_date: date | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+
+
 def create_app(settings: Settings | None = None, probe: Callable | None = None) -> FastAPI:
     config = settings if settings is not None else Settings()
     readiness_probe = probe if probe is not None else lambda: check_readiness(config)
@@ -31,8 +60,8 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=config.allowed_origins,
-        allow_methods=["GET"],
-        allow_headers=["Content-Type"],
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type", "X-Annotation-Token"],
         expose_headers=["X-Request-ID"],
     )
 
@@ -84,10 +113,10 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
     @app.get("/api/v1/status")
     def status():
         return {
-            "stage": "CONTEXT_AND_RULES",
+            "stage": "LABELS_AND_MODEL_PIPELINE",
             "data_mode": config.app_data_mode.value,
             "ingestion_status": "MANUAL_CLI",
-            "classifier_status": "NOT_IMPLEMENTED",
+            "classifier_status": "NOT_SERVED_AWAITING_REVIEWED_LABELS",
             "rules_status": "HEURISTIC_RULES_UNCALIBRATED",
             "observation_count": None,
             "last_acquisition_at": None,
@@ -265,6 +294,100 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
             return error_response(
                 request, "DATA_UNAVAILABLE", "The stored-data service is not ready."
             )
+
+    def unavailable(request):
+        return error_response(request, "DATA_UNAVAILABLE", "The stored-data service is not ready.")
+
+    @app.get("/api/v1/annotation/case-sets")
+    def case_sets(request: Request):
+        try:
+            return {"case_sets": list_case_sets(config), "review_enabled": token_configured()}
+        except SQLAlchemyError:
+            return unavailable(request)
+
+    @app.get("/api/v1/annotation/{case_set}/queue")
+    def queue(
+        request: Request,
+        case_set: Annotated[str, CASE_SET],
+        reviewer: Annotated[str, REVIEWER],
+        limit: int = Query(default=20, ge=1, le=100),
+    ):
+        try:
+            return review_queue(config, case_set, reviewer.strip(), limit)
+        except IngestError:
+            return error_response(request, "NOT_FOUND", "No case set with that name.", 404)
+        except SQLAlchemyError:
+            return unavailable(request)
+
+    @app.get("/api/v1/annotation/{case_set}/cases/{case_id}")
+    def annotation_case(
+        request: Request,
+        case_set: Annotated[str, CASE_SET],
+        case_id: Annotated[str, Path(pattern="^[0-9a-f]{64}$")],
+    ):
+        try:
+            result = review_case(config, case_set, case_id)
+        except IngestError:
+            result = None
+        except SQLAlchemyError:
+            return unavailable(request)
+        if result is None:
+            return error_response(request, "NOT_FOUND", "No such case in this case set.", 404)
+        return result
+
+    def token_configured() -> bool:
+        return config.annotation_token is not None and bool(
+            config.annotation_token.get_secret_value()
+        )
+
+    @app.post("/api/v1/annotation/{case_set}/reviews", status_code=201)
+    def create_review(
+        request: Request,
+        case_set: Annotated[str, CASE_SET],
+        review: ReviewIn,
+        x_annotation_token: Annotated[str | None, Header(max_length=200)] = None,
+    ):
+        if not token_configured():
+            return error_response(
+                request,
+                "ANNOTATION_DISABLED",
+                "Review submission is disabled until ANNOTATION_TOKEN is set on the server.",
+            )
+        expected = config.annotation_token.get_secret_value().encode()
+        if not x_annotation_token or not hmac.compare_digest(x_annotation_token.encode(), expected):
+            return error_response(
+                request, "UNAUTHORIZED", "A valid annotation token is required.", 401
+            )
+        try:
+            return submit_review(config, case_set, review.model_dump(mode="json"))
+        except IngestError:
+            return error_response(request, "NOT_FOUND", "No case set with that name.", 404)
+        except LookupError:
+            return error_response(request, "NOT_FOUND", "No such case in this case set.", 404)
+        except ValueError as error:
+            return error_response(request, "INVALID_REVIEW", str(error), 422)
+        except IntegrityError:
+            return error_response(
+                request, "CONFLICT", "This review was already recorded; reload the case.", 409
+            )
+        except SQLAlchemyError:
+            return unavailable(request)
+
+    @app.get("/api/v1/annotation/{case_set}/summary")
+    def annotation_summary(request: Request, case_set: Annotated[str, CASE_SET]):
+        try:
+            return label_summary(config, case_set)
+        except IngestError:
+            return error_response(request, "NOT_FOUND", "No case set with that name.", 404)
+        except SQLAlchemyError:
+            return unavailable(request)
+
+    @app.get("/api/v1/models")
+    def models(request: Request):
+        try:
+            return {"models": models_list(config)}
+        except SQLAlchemyError:
+            return unavailable(request)
 
     return app
 

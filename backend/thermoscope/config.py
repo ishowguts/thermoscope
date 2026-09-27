@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
     database_url: SecretStr | None = None
     firms_map_key: SecretStr | None = None
+    # Shared secret for submitting label reviews; reviews are disabled while it is unset.
+    annotation_token: SecretStr | None = None
     object_store_local_path: Path = Path("local/objects")
     app_data_mode: DataMode = DataMode.SYNTHETIC_FIXTURE
     allowed_origins: list[str] = ["http://127.0.0.1:5173", "http://localhost:5173"]

@@ -31,7 +31,7 @@ def test_unreachable_database_does_not_leak_credentials():
 def test_no_invented_classifier_or_observation_count():
     with TestClient(create_app(Settings(_env_file=None, database_url=None))) as client:
         status = client.get("/api/v1/status").json()
-        assert status["classifier_status"] == "NOT_IMPLEMENTED"
+        assert status["classifier_status"] == "NOT_SERVED_AWAITING_REVIEWED_LABELS"
         assert status["observation_count"] is None
 
 
