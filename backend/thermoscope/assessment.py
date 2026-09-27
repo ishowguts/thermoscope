@@ -18,8 +18,12 @@ from thermoscope.config import DataMode, Settings
 from thermoscope.context import find_candidates, find_snapshot, snapshot_provider, support_radius_m
 from thermoscope.database import database_engine
 from thermoscope.landcover import PRODUCT_YEAR, PUBLISHED_ON, observation_landcover
+from thermoscope.regions import NOAA20_PRODUCTS, Product
 
-FEATURE_VERSION = "history-features-v2"
+NRT_PRODUCT = Product.NOAA20.value
+SP_PRODUCT = Product.NOAA20_SP.value
+
+FEATURE_VERSION = "history-features-v3"  # v3: NOAA-20 SP/NRT stream, SP supersedes NRT
 RULES_VERSION = "rules-v2"
 SITE_RADIUS_M = 750.0  # same as the P03 link distance
 EPISODE_HOURS = 24
@@ -100,6 +104,25 @@ def covered_dates(runs: list[Coverage], as_of: datetime, basis: str) -> set[date
             days.add(day)
             day += timedelta(days=1)
     return days
+
+
+def product_family(product: str) -> tuple[str, ...]:
+    """NOAA-20 NRT and standard-processing (SP) files are one sensor record; every other
+    product stands alone, so an unrelated satellite can never add history or coverage."""
+    return NOAA20_PRODUCTS if product in NOAA20_PRODUCTS else (product,)
+
+
+def reconcile_stream(detections: list[Detection], run_rows) -> tuple[list, list, int]:
+    """Coverage from qualifying runs of the observation's product family. On a UTC day that SP
+    covers (a qualifying SP run, or any SP detection), SP supersedes NRT: that day's NRT
+    detections are dropped so one physical detection is never counted twice.
+    Returns (detections, runs, dropped)."""
+    sp_days = covered_dates([Coverage(*r[:3]) for r in run_rows if r[3] == SP_PRODUCT], None, "")
+    sp_days |= {d.acquired_at.date() for d in detections if d.product == SP_PRODUCT}
+    kept = [
+        d for d in detections if not (d.product == NRT_PRODUCT and d.acquired_at.date() in sp_days)
+    ]
+    return kept, [Coverage(*r[:3]) for r in run_rows], len(detections) - len(kept)
 
 
 def per_overpass_max(detections: list[Detection]) -> dict[tuple, float]:
@@ -559,6 +582,7 @@ def load_inputs(conn, observation_id: str, mode: DataMode, as_of: datetime | Non
     if as_of < obs["acquired_at"]:
         raise ValueError("as_of precedes the observation")
     point = {"lon": obs["lon"], "lat": obs["lat"]}
+    family = product_family(obs["product"])
     rows = conn.execute(
         text("""
         SELECT o.id,o.acquired_at,(o.payload->>'frp_mw')::double precision,
@@ -569,6 +593,7 @@ def load_inputs(conn, observation_id: str, mode: DataMode, as_of: datetime | Non
                 AND r.status IN ('SUCCEEDED','PARTIAL')) AS available_at
         FROM observations o
         WHERE ST_DWithin(o.geom::geography,ST_SetSRID(ST_Point(:lon,:lat),4326)::geography,:r)
+            AND o.product = ANY(:family)
             AND o.acquired_at > :earliest
             AND EXISTS (SELECT 1 FROM observation_receipts x JOIN ingestion_runs r
                 ON r.id=x.run_id WHERE x.observation_id=o.id AND r.data_mode=:mode
@@ -579,21 +604,22 @@ def load_inputs(conn, observation_id: str, mode: DataMode, as_of: datetime | Non
         | {
             "r": SITE_RADIUS_M,
             "mode": mode.value,
+            "family": list(family),
             "earliest": as_of - timedelta(days=max(WINDOWS) + 2),
         },
     ).all()
-    detections = [Detection(*row) for row in rows]
     run_rows = conn.execute(
         text("""
-        SELECT start_date,end_date,received_at FROM ingestion_runs
-        WHERE data_mode=:mode AND product=:product AND status='SUCCEEDED' AND rejected_rows=0
+        SELECT start_date,end_date,received_at,product FROM ingestion_runs
+        WHERE data_mode=:mode AND product = ANY(:family) AND status='SUCCEEDED'
+            AND rejected_rows=0
             AND ST_Covers(bounds,ST_Buffer(
                 ST_SetSRID(ST_Point(:lon,:lat),4326)::geography,:radius)::geometry)
         ORDER BY start_date,id
     """),
-        point | {"mode": mode.value, "product": obs["product"], "radius": SITE_RADIUS_M},
+        point | {"mode": mode.value, "family": list(family), "radius": SITE_RADIUS_M},
     ).all()
-    runs = [Coverage(*row) for row in run_rows]
+    detections, runs, superseded = reconcile_stream([Detection(*row) for row in rows], run_rows)
     radius, basis_note = support_radius_m(obs["scan_km"], obs["track_km"])
     snapshot = find_snapshot(
         conn,
@@ -647,7 +673,8 @@ def load_inputs(conn, observation_id: str, mode: DataMode, as_of: datetime | Non
     context["land_cover_support"] = land
     context["land_cover_map_year"] = PRODUCT_YEAR if land else None
     return {"observation": dict(obs), "as_of": as_of, "detections": detections, "runs": runs,
-            "context": context}  # fmt: skip
+            "context": context,
+            "stream": {"products": list(family), "nrt_superseded_by_sp": superseded}}  # fmt: skip
 
 
 def observation_assessment(
@@ -661,6 +688,7 @@ def observation_assessment(
     if inputs is None:
         return None
     result = assess(inputs["detections"], inputs["runs"], inputs["context"], inputs["as_of"], basis)
+    result["stream"] = inputs["stream"]
     result["observation_id"] = observation_id
     result["data_mode"] = mode.value
     result["subject"] = {
