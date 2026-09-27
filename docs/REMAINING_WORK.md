@@ -30,13 +30,15 @@ Do **not** wait for P06–P08 or hundreds of reviews before preparing/submitting
 
 Full contract and paste prompt: P05-RECONCILE.md.
 
-- [ ] Merge reviewed main into P05 in its separate checkout; preserve both histories and all review fixes.
-- [ ] Check derived P05 features, weak labels and NOAA-20 SP/NRT handling against the corrected rules, coverage and solar safeguards.
-- [ ] Regenerate affected context/features/artifacts with versioned provenance; preserve prior manifests, frozen splits and any submitted reviews. Report changed counts rather than inheriting old totals.
-- [ ] Close or explicitly gate missing historical windows, genuinely independent evidence, geographic uncertainty/licence records, large-facility grouping and the held-out-region protocol.
-- [ ] Check review blinding, append-only decisions and disagreement handling. Do not treat a shared token and self-entered name as production authentication.
-- [ ] Audit the added ML dependencies and licences; rerun relevant tests and CI on the reconciled branch.
-- [ ] Push P05 with reproducible commands and a precise technical/human blocker list. No change to canonical main.
+The status (27 September, 23:45 IST; pending independent acceptance — details in the task's Result section):
+
+- [x] Merge reviewed main into P05 in its separate checkout; preserve both histories and all review fixes. (`09fb77b`)
+- [x] Check derived P05 features, weak labels and NOAA-20 SP/NRT handling against the corrected rules, coverage and solar safeguards.
+- [x] Regenerate affected context/features/artifacts with versioned provenance; preserve prior manifests, frozen splits and any submitted reviews. Report changed counts rather than inheriting old totals.
+- [x] Close or explicitly gate missing historical windows (gated: `history-eligibility-v1`; backfill still recommended), genuinely independent evidence (`evidence-policy-v1`), geographic uncertainty/licence records, large-facility grouping (`p05-pilot-v2`) and the held-out-region protocol.
+- [x] Check review blinding, append-only decisions and disagreement handling. A shared token and self-entered names remain a pilot limitation.
+- [x] Audit the added ML dependencies and licences; rerun relevant tests and CI on the reconciled branch.
+- [x] Push P05 with reproducible commands and a precise technical/human blocker list. No change to canonical main.
 
 “Everything except people is finished” is too broad while those documented technical/scientific gaps remain. Completing the engineering pipeline does not complete the P05 evidence gate.
 

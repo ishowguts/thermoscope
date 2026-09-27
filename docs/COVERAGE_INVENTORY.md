@@ -183,3 +183,27 @@ OSM coverage differs sharply by region (Simlipal 8 features, Mumbai 1,700); mapp
 **Registry.** WRI GPPD v1.3.0: 388 Indian thermal plants imported (see DATA_SOURCES). No case in Singrauli or Talcher lies within 1.5 km of a registered plant, so their detections get no registry corroboration.
 
 **Case set `p05-pilot-v1`.** 10,318 cases (one per episode) in 2,462 site groups; TRAIN 6,481 / VALIDATION 2,050 / TEST 1,787 cases; manifest SHA-256 recorded in the database and in `local/objects/manifests/`. Group sizes make some regional splits uneven (Talcher VALIDATION has 5 cases because a single 215-case group carried TRAIN past its share). Land cover was summarized for every representative detection. **No reviewed labels exist yet.**
+
+## P05 reconciliation — history eligibility and case set v2 (27 September 2026, 23:30 IST)
+
+No new retrieval. `p05-pilot-v2` (facility-aware grouping, 2,437 groups) supersedes the frozen `p05-pilot-v1` for review and evaluation; both contain the same 10,318 episodes. Under `history-eligibility-v1` a case is usable only when at least 80 % of the 90 days before it were retrieved. Because the saved archive starts on 30 March 2026, the first eligible episode is on 10 June.
+
+| Region | Cases | History-complete | of which TEST |
+|---|---|---|---|
+| haldia | 61 | 25 | 0 |
+| jamnagar | 298 | 90 | 29 |
+| jharia | 1,061 | 478 | 35 |
+| kgbasin | 347 | 8 | 2 |
+| korba | 962 | 96 | 2 |
+| mathura | 213 | 23 | 1 |
+| mumbai | 817 | 75 | 10 |
+| panipat | 1,103 | 67 | 38 |
+| paradip | 93 | 5 | 3 |
+| punjab | 3,009 | 83 | 5 |
+| simlipal | 14 | 0 | 0 |
+| singrauli | 1,161 | 110 | 3 |
+| talcher | 946 | 220 | 19 |
+| vizag | 233 | 41 | 2 |
+| **Total** | **10,318** | **1,321** | **149** |
+
+Complete windows for every case need NOAA-20 SP from **30 December 2025 to 29 March 2026**: 18 bounded five-day requests per region, 252 in total, not yet fetched. 663 cases lie within 2 km of their region's OSM extract boundary, so their OSM inputs are missing rather than zero.
