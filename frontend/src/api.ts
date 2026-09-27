@@ -399,6 +399,8 @@ export type CaseSet = {
   manifest_sha256: string;
   created_at: string;
   reviews: number;
+  grouping: string;
+  superseded_by: string | null;
 };
 export type QueueItem = {
   case_id: string;
@@ -407,11 +409,14 @@ export type QueueItem = {
   as_of: string;
   reviews: number;
   needs: number;
+  history_complete: boolean;
   role: "REVIEWER" | "ADJUDICATOR";
 };
 export type ReviewQueue = {
   case_set_id: string;
   reviewer: string;
+  superseded_by: string | null;
+  queue_order: string;
   adjudication: QueueItem[];
   review: QueueItem[];
   remaining_reviews: number;
@@ -422,7 +427,14 @@ export type EarlierReview = {
   source_label: string;
   industrial_subtype: string | null;
   certainty: string;
-  evidence: string[];
+  evidence: {
+    items?: {
+      url: string;
+      kind: string;
+      observed_on: string | null;
+      independent: boolean;
+    }[];
+  };
   evidence_date: string | null;
   notes: string | null;
   reviewed_at: string;
@@ -465,6 +477,13 @@ export type ReviewCase = {
   reviews_recorded: number;
   adjudication: { needed: boolean; earlier_reviews: EarlierReview[] } | null;
   guidance: string;
+  evidence_policy: {
+    version: string;
+    kinds: string[];
+    independent_kinds: string[];
+    imagery_window_days: { before: number; after: number };
+    gold_needs: string;
+  };
   labels: string[];
   subtypes: string[];
 };
@@ -497,7 +516,7 @@ export async function postReview(
   caseSet: string,
   token: string,
   body: Record<string, unknown>,
-): Promise<{ review_id: string; role: string }> {
+): Promise<{ review_id: string; role: string; review_tier: string }> {
   const response = await fetch(
     `/api/v1/annotation/${encodeURIComponent(caseSet)}/reviews`,
     {
@@ -514,7 +533,9 @@ export async function postReview(
     if (response.status === 401)
       throw new Error("The review token was not accepted.");
     if (response.status === 422 && payload.code === "INVALID_QUERY")
-      throw new Error("Check the links, date and notes, then try again.");
+      throw new Error(
+        "Check the links, types, dates and notes, then try again.",
+      );
     throw new Error(
       payload.message ?? "The review could not be saved. Try again.",
     );

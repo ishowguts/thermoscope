@@ -20,23 +20,83 @@ import type {
   ReviewQueue,
 } from "./api";
 
+type EvidenceRow = {
+  url: string;
+  kind: string;
+  observed_on: string;
+  licence: string;
+};
+
 type Draft = {
   source_label: string;
   industrial_subtype: string;
   certainty: string;
-  evidence: string;
-  evidence_date: string;
+  evidence: EvidenceRow[];
   notes: string;
+};
+
+const EMPTY_ROW: EvidenceRow = {
+  url: "",
+  kind: "",
+  observed_on: "",
+  licence: "",
 };
 
 const EMPTY_DRAFT: Draft = {
   source_label: "",
   industrial_subtype: "",
   certainty: "",
-  evidence: "",
-  evidence_date: "",
+  evidence: [EMPTY_ROW],
   notes: "",
 };
+
+const EVIDENCE_TEXT: Record<string, string> = {
+  DATED_IMAGERY: "Dated satellite or aerial imagery",
+  OFFICIAL_OR_COMPANY: "Official, regulator or company source",
+  NEWS_REPORT: "News report",
+  UNDATED_BASEMAP: "Undated basemap (Google, Bing…)",
+  PROJECT_INPUT: "OSM, power-plant registry, WorldCover or FIRMS",
+  OTHER: "Other",
+};
+
+// Mirrors the server's classification; the server decides and rejects mismatches.
+function suggestKind(url: string): { kind: string; date: string } | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (
+    /(^|\.)(openstreetmap\.org|osm\.org|firms\.modaps\.eosdis\.nasa\.gov|esa-worldcover\.org|wri\.org)$/.test(
+      host,
+    ) ||
+    (host === "github.com" &&
+      parsed.pathname.startsWith("/wri/global-power-plant-database"))
+  )
+    return { kind: "PROJECT_INPUT", date: "" };
+  if (
+    host.startsWith("maps.google.") ||
+    host === "earth.google.com" ||
+    ((host.includes("google.") || host.includes("bing.com")) &&
+      parsed.pathname.startsWith("/maps"))
+  )
+    return { kind: "UNDATED_BASEMAP", date: "" };
+  if (host.endsWith("worldview.earthdata.nasa.gov"))
+    return {
+      kind: "DATED_IMAGERY",
+      date: (parsed.searchParams.get("t") ?? "").slice(0, 10),
+    };
+  return null;
+}
+
+function independent(row: EvidenceRow): boolean {
+  return (
+    row.kind === "OFFICIAL_OR_COMPANY" ||
+    (row.kind === "DATED_IMAGERY" && row.observed_on !== "")
+  );
+}
 
 const SPLIT_TEXT: Record<string, string> = {
   TEST: "Test case · needs two independent reviews",
@@ -73,7 +133,8 @@ function QueueRow({
       </span>
       <span>{day(item.as_of)}</span>
       <span className="row-bottom">
-        {item.reviews} of {item.needs} review{item.needs > 1 ? "s" : ""}{" "}
+        {item.reviews} of {item.needs} review{item.needs > 1 ? "s" : ""}
+        {item.history_complete ? "" : " · history incomplete"}{" "}
         <span>{item.case_id.slice(0, 8)}</span>
       </span>
     </button>
@@ -140,6 +201,7 @@ function CaseEvidence({ data }: { data: ReviewCase }) {
                   <li key={`${c.osm_type}/${c.osm_id}`}>
                     <span>
                       <strong>{facilityType(c.facility_type)}</strong>
+                      {c.power_source ? ` · ${c.power_source}` : ""}
                       {c.name ? ` · ${c.name}` : ""}
                     </span>
                     <span className="where">
@@ -153,6 +215,12 @@ function CaseEvidence({ data }: { data: ReviewCase }) {
                         {c.osm_type}/{c.osm_id}
                       </a>
                     </small>
+                    {!c.thermal_source_candidate && (
+                      <small>
+                        Mapped as solar, wind or water power: not a combustion
+                        source.
+                      </small>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -226,12 +294,13 @@ function CaseEvidence({ data }: { data: ReviewCase }) {
               <li key={i}>
                 {SOURCE_LABEL_TEXT[r.source_label] ?? r.source_label} (
                 {r.certainty.toLowerCase()} certainty)
-                {r.evidence.map((url) => (
-                  <span key={url}>
+                {(r.evidence.items ?? []).map((item) => (
+                  <span key={item.url}>
                     {" "}
                     ·{" "}
-                    <a href={url} target="_blank" rel="noreferrer">
-                      evidence ↗
+                    <a href={item.url} target="_blank" rel="noreferrer">
+                      {EVIDENCE_TEXT[item.kind] ?? "evidence"}
+                      {item.observed_on ? ` ${item.observed_on}` : ""} ↗
                     </a>
                   </span>
                 ))}
@@ -262,10 +331,22 @@ function ReviewForm({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
-  const links = draft.evidence
-    .split(/\s+/)
-    .map((v) => v.trim())
-    .filter(Boolean);
+  const rows = draft.evidence.filter((row) => row.url.trim() !== "");
+  const setRow = (index: number, patch: Partial<EvidenceRow>) => {
+    const next = draft.evidence.map((row, i) => {
+      if (i !== index) return row;
+      const merged = { ...row, ...patch };
+      if (patch.url !== undefined) {
+        const hint = suggestKind(patch.url.trim());
+        if (hint) {
+          merged.kind = hint.kind;
+          if (hint.date) merged.observed_on = hint.date;
+        }
+      }
+      return merged;
+    });
+    set({ evidence: next });
+  };
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -274,12 +355,18 @@ function ReviewForm({
       setError("Choose a source and a certainty.");
       return;
     }
-    if (draft.source_label !== "UNRESOLVED" && links.length === 0) {
+    if (draft.source_label !== "UNRESOLVED" && rows.length === 0) {
       setError("Add at least one evidence link, or choose “Cannot decide”.");
       return;
     }
-    if (links.length > 5 || links.some((l) => !/^https?:\/\//.test(l))) {
-      setError("Use up to five links starting with http:// or https://.");
+    if (rows.some((r) => !/^https?:\/\//.test(r.url.trim()) || !r.kind)) {
+      setError(
+        "Every link needs to start with http:// or https:// and have a type.",
+      );
+      return;
+    }
+    if (rows.some((r) => r.kind === "DATED_IMAGERY" && !r.observed_on)) {
+      setError("Add the date of the imagery you looked at.");
       return;
     }
     setSaving(true);
@@ -293,15 +380,23 @@ function ReviewForm({
             ? draft.industrial_subtype
             : null,
         certainty: draft.certainty,
-        evidence: links,
-        evidence_date: draft.evidence_date || null,
+        evidence: rows.map((r) => ({
+          url: r.url.trim(),
+          kind: r.kind,
+          observed_on: r.observed_on || null,
+          licence: r.licence.trim() || null,
+        })),
         notes: draft.notes.trim() || null,
       });
       setDraft(EMPTY_DRAFT);
+      const tier =
+        saved.review_tier === "GOLD-eligible"
+          ? "It can count towards test truth."
+          : "It cannot count as test truth: it needs dated imagery or an official source and at least medium certainty.";
       onSaved(
-        saved.role === "ADJUDICATOR"
-          ? "Adjudication saved."
-          : "Review saved. The next case is open.",
+        (saved.role === "ADJUDICATOR"
+          ? "Adjudication saved. "
+          : "Review saved. The next case is open. ") + tier,
       );
     } catch (reason) {
       setError((reason as Error).message);
@@ -359,23 +454,67 @@ function ReviewForm({
           </label>
         ))}
       </fieldset>
-      <label>
-        Evidence links (one per line, up to five)
-        <textarea
-          rows={3}
-          value={draft.evidence}
-          onChange={(e) => set({ evidence: e.target.value })}
-          placeholder="https://worldview.earthdata.nasa.gov/…"
-        />
-      </label>
-      <label>
-        Date of the imagery or source you used (optional)
-        <input
-          type="date"
-          value={draft.evidence_date}
-          onChange={(e) => set({ evidence_date: e.target.value })}
-        />
-      </label>
+      <fieldset className="evidence-rows">
+        <legend>Evidence you relied on (up to five)</legend>
+        {draft.evidence.map((row, index) => (
+          <div className="evidence-row" key={index}>
+            <input
+              aria-label={`Evidence link ${index + 1}`}
+              value={row.url}
+              onChange={(e) => setRow(index, { url: e.target.value })}
+              placeholder="https://…"
+            />
+            <select
+              aria-label={`Evidence type ${index + 1}`}
+              value={row.kind}
+              onChange={(e) => setRow(index, { kind: e.target.value })}
+            >
+              <option value="">Type of source…</option>
+              {data.evidence_policy.kinds.map((kind) => (
+                <option key={kind} value={kind}>
+                  {EVIDENCE_TEXT[kind] ?? kind}
+                </option>
+              ))}
+            </select>
+            <div className="evidence-meta">
+              <input
+                type="date"
+                aria-label={`Date of evidence ${index + 1}`}
+                value={row.observed_on}
+                onChange={(e) => setRow(index, { observed_on: e.target.value })}
+              />
+              <input
+                aria-label={`Licence or terms ${index + 1}`}
+                value={row.licence}
+                maxLength={120}
+                onChange={(e) => setRow(index, { licence: e.target.value })}
+                placeholder="Licence / terms"
+              />
+            </div>
+            {row.url.trim() && row.kind && (
+              <small className={independent(row) ? "ok" : "weak"}>
+                {independent(row)
+                  ? "Independent evidence if its date is near the episode."
+                  : "Supports your view, but cannot decide a test label."}
+              </small>
+            )}
+          </div>
+        ))}
+        {draft.evidence.length < 5 && (
+          <button
+            type="button"
+            className="quiet"
+            onClick={() => set({ evidence: [...draft.evidence, EMPTY_ROW] })}
+          >
+            + Add another source
+          </button>
+        )}
+        <p className="help">
+          Labels record the kind of source only, never whether an accident
+          happened. The Worldview thermal layer is the same NASA detection;
+          judge the true-colour image.
+        </p>
+      </fieldset>
       <label>
         Notes (optional)
         <textarea
@@ -542,6 +681,7 @@ export function ReviewPage() {
               {sets?.map((s) => (
                 <option key={s.id} value={s.name}>
                   {s.name} · {s.case_count.toLocaleString("en-GB")} cases
+                  {s.superseded_by ? ` · replaced by ${s.superseded_by}` : ""}
                 </option>
               )) ?? <option>Loading…</option>}
             </select>
@@ -593,6 +733,12 @@ export function ReviewPage() {
               </small>
             </div>
           </section>
+          {queue?.superseded_by && (
+            <div className="notice error" role="alert">
+              This case set was replaced by {queue.superseded_by}; its grouping
+              is not safe for evaluation and it no longer accepts reviews.
+            </div>
+          )}
           {message && (
             <div className="notice" role="status">
               {message}

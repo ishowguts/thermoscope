@@ -1,6 +1,12 @@
 export type Page = "observations" | "review";
 
-export function Rail({ active }: { active: Page }) {
+export function Rail({
+  active,
+  reviewOnly = false,
+}: {
+  active: Page;
+  reviewOnly?: boolean;
+}) {
   const item = (page: Page, href: string, label: string) =>
     active === page ? (
       <div className="selected" aria-current="page">
@@ -18,7 +24,7 @@ export function Rail({ active }: { active: Page }) {
       </a>
       <div className="rail-section">WORKSPACE</div>
       <nav className="rail-nav" aria-label="Pages">
-        {item("observations", "#/", "Observations")}
+        {!reviewOnly && item("observations", "#/", "Observations")}
         {item("review", "#/review", "Label review")}
       </nav>
       <p className="rail-note">

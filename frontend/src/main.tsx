@@ -947,15 +947,24 @@ function currentPage(): "observations" | "review" {
 
 function Root() {
   const [page, setPage] = useState(currentPage);
+  const [reviewOnly, setReviewOnly] = useState(false);
   useEffect(() => {
     const update = () => setPage(currentPage());
     window.addEventListener("hashchange", update);
     return () => window.removeEventListener("hashchange", update);
   }, []);
-  if (page === "observations") return <App />;
+  useEffect(() => {
+    const controller = new AbortController();
+    readApi<{ review_only?: boolean }>("/api/v1/status", controller.signal)
+      .then((status) => setReviewOnly(Boolean(status.review_only)))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+  // A blind-review server never shows the automated assessments.
+  if (page === "observations" && !reviewOnly) return <App />;
   return (
     <div className="shell">
-      <Rail active="review" />
+      <Rail active="review" reviewOnly={reviewOnly} />
       <main>
         <Suspense fallback={<p className="help">Loading review workspace…</p>}>
           <ReviewPage />
