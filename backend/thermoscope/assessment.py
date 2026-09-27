@@ -19,8 +19,8 @@ from thermoscope.context import find_candidates, find_snapshot, snapshot_provide
 from thermoscope.database import database_engine
 from thermoscope.landcover import PRODUCT_YEAR, PUBLISHED_ON, observation_landcover
 
-FEATURE_VERSION = "history-features-v1"
-RULES_VERSION = "rules-v1"
+FEATURE_VERSION = "history-features-v2"
+RULES_VERSION = "rules-v2"
 SITE_RADIUS_M = 750.0  # same as the P03 link distance
 EPISODE_HOURS = 24
 WINDOWS = (7, 30, 90, 180)
@@ -309,7 +309,8 @@ def behaviour_rule(features: dict) -> dict:
 
 def source_rule(context: dict, features: dict) -> dict:
     """Ordered heuristic; abstains with a reason rather than forcing a class."""
-    candidates = context.get("candidates_in_support") or []
+    mapped = context.get("candidates_in_support") or []
+    candidates = [c for c in mapped if c.get("thermal_source_candidate", True)]
     land = context.get("land_cover_support")
     active = features["windows"][str(BASELINE_WINDOW)]["active_days"]
     conditions, reasons = [], []
@@ -319,6 +320,17 @@ def source_rule(context: dict, features: dict) -> dict:
             "reason_code": "CONTEXT_UNAVAILABLE_AS_OF",
             "heuristic_support": 0,
             "reasons": [context.get("facility_context_note", "No facility context.")],
+        }
+    if mapped and not candidates:
+        return {
+            "label": "UNKNOWN",
+            "reason_code": "NON_THERMAL_POWER_CONTEXT",
+            "heuristic_support": 0,
+            "reasons": [
+                "The mapped power feature is tagged as solar, wind or water power. It stays "
+                "visible as context, but does not establish an industrial heat source. "
+                "Recurrence alone does not identify what produced the heat."
+            ],
         }
     types = sorted({c["facility_type"] for c in candidates})
     tags = {c["primary_tag"] for c in candidates}
@@ -374,6 +386,16 @@ def source_rule(context: dict, features: dict) -> dict:
         }
     nearby = context.get("nearby_industrial", 0)
     if crop >= CROPLAND_SUPPORT and active < RECURRENT_ACTIVE_DAYS:
+        if features["windows"][str(BASELINE_WINDOW)]["coverage_fraction"] < MIN_COVERAGE:
+            return {
+                "label": "UNKNOWN",
+                "reason_code": "INSUFFICIENT_RECURRENCE_COVERAGE",
+                "heuristic_support": 0,
+                "reasons": [
+                    "Cropland is mapped here, but too little history was retrieved to infer "
+                    "that this source is not recurrent. Missing history is not absence of heat."
+                ],
+            }
         conditions = ["NO_MAPPED_INDUSTRY_IN_PIXEL_AREA", "CROPLAND_DOMINANT"]
         reasons = [
             "No mapped industrial feature in the pixel area.",
@@ -564,11 +586,12 @@ def load_inputs(conn, observation_id: str, mode: DataMode, as_of: datetime | Non
     run_rows = conn.execute(
         text("""
         SELECT start_date,end_date,received_at FROM ingestion_runs
-        WHERE data_mode=:mode AND status IN ('SUCCEEDED','PARTIAL')
-            AND ST_Covers(bounds,ST_SetSRID(ST_Point(:lon,:lat),4326))
+        WHERE data_mode=:mode AND product=:product AND status='SUCCEEDED' AND rejected_rows=0
+            AND ST_Covers(bounds,ST_Buffer(
+                ST_SetSRID(ST_Point(:lon,:lat),4326)::geography,:radius)::geometry)
         ORDER BY start_date,id
     """),
-        point | {"mode": mode.value},
+        point | {"mode": mode.value, "product": obs["product"], "radius": SITE_RADIUS_M},
     ).all()
     runs = [Coverage(*row) for row in run_rows]
     radius, basis_note = support_radius_m(obs["scan_km"], obs["track_km"])
@@ -578,6 +601,7 @@ def load_inputs(conn, observation_id: str, mode: DataMode, as_of: datetime | Non
         obs["lat"],
         snapshot_provider(mode),
         received_by=as_of if basis == Basis.OPERATIONAL else None,
+        radius=max(radius, 2000.0),
     )
     context = {
         "support_radius_m": round(radius, 1),
@@ -607,6 +631,8 @@ def load_inputs(conn, observation_id: str, mode: DataMode, as_of: datetime | Non
                         "primary_tag",
                         "distance_m",
                         "name",
+                        "power_source",
+                        "thermal_source_candidate",
                     )
                 }
                 for c in inside

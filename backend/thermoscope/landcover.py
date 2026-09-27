@@ -32,7 +32,7 @@ ATTRIBUTION = (
     "processed by ESA WorldCover consortium"
 )
 ACCURACY_NOTE = "Global overall accuracy 76.7 ± 0.5 % (WorldCover 2021 v200 validation report)"
-SUMMARY_VERSION = "landcover-summary-v1"
+SUMMARY_VERSION = "landcover-summary-v2"
 TILE_PREFIX = "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/"
 NODATA = 0
 CLASSES = {
@@ -104,16 +104,29 @@ def summarize_array(array, transform, lon, lat, radius_m: float) -> dict:
 
 def read_window(source: str, lon: float, lat: float, radius_m: float):
     """Read a square window around the point; outside-tile pixels are filled as nodata."""
+    if not 0 < radius_m <= 5000 or not -85 < lat < 85:
+        raise IngestError("RASTER_WINDOW_OUTSIDE_PILOT_LIMITS")
     m_lat, m_lon = metres_per_degree(lat)
     dlat, dlon = radius_m / m_lat * 1.05, radius_m / m_lon * 1.05
     path = source if not source.startswith("https://") else "/vsicurl/" + source
     if source.startswith("https://") and not source.startswith(TILE_PREFIX):
         raise IngestError("ENDPOINT_NOT_ALLOWED")
     with rasterio.Env(**GDAL_OPTIONS), rasterio.open(path) as dataset:
-        if dataset.crs is None or dataset.crs.to_epsg() != 4326 or dataset.count != 1:
+        if (
+            dataset.crs is None
+            or dataset.crs.to_epsg() != 4326
+            or dataset.count != 1
+            or dataset.transform.b != 0
+            or dataset.transform.d != 0
+            or dataset.transform.a <= 0
+            or dataset.transform.e >= 0
+            or dataset.dtypes[0] != "uint8"
+        ):
             raise IngestError("UNSUPPORTED_RASTER")
         window = from_bounds(lon - dlon, lat - dlat, lon + dlon, lat + dlat, dataset.transform)
         window = window.round_offsets().round_lengths()
+        if window.width * window.height > 5_000_000:
+            raise IngestError("RASTER_WINDOW_TOO_LARGE")
         array = dataset.read(1, window=window, boundless=True, fill_value=NODATA)
         transform = dataset.window_transform(window)
         b = dataset.bounds
@@ -187,13 +200,15 @@ def extract_landcover(
         for observation_id, lon, lat, scan, track in rows:
             tile = tile_id(lon, lat)
             source = resolve(tile)
+            support_radius, basis = support_radius_m(scan, track)
             try:
-                array, transform, clipped = read_window(source, lon, lat, CONTEXT_RADIUS_M)
+                array, transform, clipped = read_window(
+                    source, lon, lat, max(CONTEXT_RADIUS_M, support_radius)
+                )
             except (IngestError, rasterio.errors.RasterioError, OSError) as error:
                 code = error.code if isinstance(error, IngestError) else "RASTER_READ_FAILED"
                 failed.append({"observation_id": observation_id, "error_code": code})
                 continue
-            support_radius, basis = support_radius_m(scan, track)
             support = summarize_array(array, transform, lon, lat, support_radius)
             context = summarize_array(array, transform, lon, lat, CONTEXT_RADIUS_M)
             window_sha = hashlib.sha256(

@@ -19,7 +19,7 @@ from thermoscope.osm import PROVIDER
 from thermoscope.regions import Bounds
 
 SUPPORT_VERSION = "support-v1"
-ASSOCIATION_VERSION = "facility-association-v1"
+ASSOCIATION_VERSION = "facility-association-v2"
 NOMINAL_VIIRS_I_KM = 0.375
 # Engineering default for geolocation error, not a measured accuracy of this product.
 GEOLOCATION_BUFFER_M = 100.0
@@ -58,20 +58,42 @@ def summarize(candidates: list[dict], covered: bool) -> str:
     return "NEARBY_ONLY" if candidates else "NO_MAPPED_FEATURE_NEARBY"
 
 
-def find_snapshot(conn, lon: float, lat: float, provider: str, received_by=None):
-    """Newest snapshot covering the point; optionally only one already retrieved by a time."""
+def power_context(tags: dict) -> tuple[str | None, bool]:
+    """Retain power-source tags even when a renewable area matches landuse=industrial."""
+    if tags.get("power") not in {"plant", "generator"}:
+        return None, True
+    source = tags.get("plant:source") or tags.get("generator:source")
+    sources = {part.strip().lower() for part in (source or "").split(";") if part.strip()}
+    excluded = bool(sources) and sources <= {"solar", "wind", "hydro", "tidal", "wave"}
+    method = tags.get("plant:method") or tags.get("generator:method")
+    if method == "photovoltaic":
+        excluded = True
+    return source or method, not excluded
+
+
+def find_snapshot(
+    conn, lon: float, lat: float, provider: str, received_by=None, radius=CONTEXT_RADIUS_M
+):
+    """Newest snapshot covering the search area, optionally already retrieved by a time."""
     return (
         conn.execute(
             text("""
         SELECT id,region_id,osm_base_at,first_received_at,facility_count,query_version,
             type_map_version,license,attribution
         FROM facility_snapshots
-        WHERE provider=:provider AND ST_Covers(bounds,ST_SetSRID(ST_Point(:lon,:lat),4326))
+        WHERE provider=:provider AND ST_Covers(bounds,ST_Buffer(
+            ST_SetSRID(ST_Point(:lon,:lat),4326)::geography,:radius)::geometry)
             AND (CAST(:received_by AS timestamptz) IS NULL
                  OR first_received_at <= CAST(:received_by AS timestamptz))
         ORDER BY osm_base_at DESC,id LIMIT 1
     """),
-            {"lon": lon, "lat": lat, "provider": provider, "received_by": received_by},
+            {
+                "lon": lon,
+                "lat": lat,
+                "provider": provider,
+                "received_by": received_by,
+                "radius": radius,
+            },
         )
         .mappings()
         .first()
@@ -84,7 +106,7 @@ def find_candidates(conn, lon: float, lat: float, radius: float, snapshot_id):
             text("""
         WITH p AS (SELECT ST_SetSRID(ST_Point(:lon,:lat),4326) AS g),
         s AS (SELECT ST_Buffer(p.g::geography,:radius) AS support FROM p)
-        SELECT f.osm_type,f.osm_id,f.name,f.facility_type,f.primary_tag,f.build,
+        SELECT f.osm_type,f.osm_id,f.name,f.facility_type,f.primary_tag,f.build,f.tags,
             f.osm_timestamp,
             ST_Distance(p.g::geography,f.geom::geography) AS distance_m,
             ST_Covers(f.geom,p.g) AS contains_centre,
@@ -114,6 +136,7 @@ def find_candidates(conn, lon: float, lat: float, radius: float, snapshot_id):
     for row in rows[:MAX_CANDIDATES]:
         distance = float(row["distance_m"])
         overlap = row["support_overlap"]
+        power_source, thermal_candidate = power_context(row["tags"])
         candidates.append(
             {
                 "osm_type": row["osm_type"],
@@ -122,6 +145,8 @@ def find_candidates(conn, lon: float, lat: float, radius: float, snapshot_id):
                 "name": row["name"],
                 "facility_type": row["facility_type"],
                 "primary_tag": row["primary_tag"],
+                "power_source": power_source,
+                "thermal_source_candidate": thermal_candidate,
                 "geometry_kind": row["build"],
                 "osm_last_edited_at": row["osm_timestamp"],
                 "distance_m": round(distance, 1),
@@ -168,7 +193,13 @@ def observation_context(settings: Settings, observation_id: str, mode: DataMode)
         """),
             point,
         ).scalar_one()
-        snapshot = find_snapshot(conn, obs["lon"], obs["lat"], snapshot_provider(mode))
+        snapshot = find_snapshot(
+            conn,
+            obs["lon"],
+            obs["lat"],
+            snapshot_provider(mode),
+            radius=max(radius, CONTEXT_RADIUS_M),
+        )
         candidates, truncated = [], False
         if snapshot is not None:
             candidates, truncated = find_candidates(

@@ -99,6 +99,7 @@ function Context({
                 >
                   <span>
                     <strong>{facilityType(c.facility_type)}</strong>
+                    {c.power_source ? ` · ${c.power_source}` : ""}
                     {c.name ? ` · ${c.name}` : ""}
                   </span>
                   <span className="where">
@@ -116,6 +117,12 @@ function Context({
                       {c.osm_type}/{c.osm_id}
                     </a>
                   </small>
+                  {!c.thermal_source_candidate && (
+                    <small>
+                      Retained as mapped context; not used as evidence of an
+                      industrial heat source.
+                    </small>
+                  )}
                 </li>
               ))}
             </ul>

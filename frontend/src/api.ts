@@ -125,6 +125,8 @@ export type FacilityCandidate = {
   name: string | null;
   facility_type: string;
   primary_tag: string;
+  power_source: string | null;
+  thermal_source_candidate: boolean;
   geometry_kind: string;
   osm_last_edited_at: string | null;
   distance_m: number;
