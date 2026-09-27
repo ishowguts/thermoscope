@@ -105,14 +105,16 @@ A new machine without those files must fetch its own bounded history with `make 
 
 ## Labels and model (P05)
 
-Needs the optional model libraries: `make install-ml` (macOS may also need `brew install libomp`; not yet verified on a Mac). Run after the P03/P04 context steps; each command prints a JSON report. Resources: PostGIS with about 24,000 observations; the WorldCover step reads about 20 public tiles (network); case sets, land cover and features take a few minutes each and training seconds, on one CPU core in the Linux workspace (memory not measured).
+Needs the optional model libraries: `make install-ml`. On macOS also run `brew install libomp` once: the XGBoost 3.4.1 wheel does not bundle OpenMP and loads it only from `/opt/homebrew/opt/libomp/lib` (verified on the owner's Mac, where XGBoost failed to load until then; neither a dyld fallback path nor scikit-learn's bundled libomp is used). Run after the P03/P04 context steps; each command prints a JSON report. Resources: PostGIS with about 24,000 observations; the WorldCover step reads about 20 public tiles (network); case sets, land cover and features take a few minutes each and training seconds, on one CPU core in the Linux workspace (memory not measured).
 
-The P05 data are 464 saved FIRMS files (NOAA-20 SP 30 March–30 June for all 14 regions, NRT 1 July–25 September for the 11 new regions) in ignored `local/p05-fetch/raw/`, 14 Overpass responses in `local/context-fetch/` (all with `.meta.json` sidecars; hashes in `COVERAGE_INVENTORY.md` and `docs/inventory/p05-firms-files.csv`), and the registry CSV in `local/registry/`. Nothing below contacts NASA; WorldCover windows are read from the public tiles.
+The P05 data are 464 saved FIRMS files (NOAA-20 SP 30 March–30 June for all 14 regions, NRT 1 July–25 September for the 11 new regions) in ignored `local/p05-fetch/raw/`, the 252-file NOAA-20 SP history backfill (30 December 2025–29 March 2026, all 14 regions; `docs/inventory/p05-backfill-files.csv`) in ignored `local/p05-backfill/raw/`, 14 Overpass responses in `local/context-fetch/` (all with `.meta.json` sidecars; hashes in `COVERAGE_INVENTORY.md` and `docs/inventory/p05-firms-files.csv`), and the registry CSV in `local/registry/`. Nothing below contacts NASA; WorldCover windows are read from the public tiles.
 
 ```bash
-make migrate                                            # 0006_labels_models, 0007_review_integrity
+make migrate                                            # 0006_labels_models … 0008_reviewer_accounts
 PYTHONPATH=backend bash scripts/run.sh uv run --frozen python scripts/import_saved.py \
     --firms-dir local/p05-fetch/raw --osm-dir local/context-fetch   # safe to re-run
+PYTHONPATH=backend bash scripts/run.sh uv run --frozen python scripts/import_saved.py \
+    --firms-dir local/p05-backfill/raw                  # history backfill; import before features
 make ml ARGS="import-gppd --file local/registry/gppd.csv --sha256 4b1f93e0fd93664f18684d9b05d0a52ed9658c6a8cf0d21ff2520791379ba7fc --retrieved-at 2026-09-27T09:40:00+00:00"
 # The original frozen grouping, kept for provenance (expected splits_sha256 below):
 make ml ARGS="build-cases --name p05-pilot-v1 --grouping site-2km-v1"
@@ -121,18 +123,30 @@ make ml ARGS="grouping-audit --case-set p05-pilot-v1"   # 14 facilities cross sp
 make ml ARGS="build-cases --name p05-pilot-v2 --grouping facility-aware-v1 --supersedes p05-pilot-v1 --reason 'site-2km-v1 lets large facilities cross splits (grouping-audit)'"
 make ml ARGS="grouping-audit --case-set p05-pilot-v2"   # expect safe_for_unseen_site_claims: true
 make ml ARGS="landcover --case-set p05-pilot-v2"        # landcover-summary-v2, about 3 minutes
-make ml ARGS="features --case-set p05-pilot-v2"         # case-features-v3, about 3 minutes
+make ml ARGS="features --case-set p05-pilot-v2"         # case-features-v4, about 3 minutes; refuses
+                                                        # if any archive day is missing
 make ml ARGS="fingerprint --case-set p05-pilot-v2"      # compare with the values in EVIDENCE.md
 make ml ARGS="summary --case-set p05-pilot-v2"          # label tiers, reviewed test labels, agreement
 make ml ARGS="train --case-set p05-pilot-v2"            # INSUFFICIENT_LABELS until reviews exist
 make ml ARGS="train --case-set p05-pilot-v2 --dry-run-weak"   # pipeline check only, never evidence
 ```
 
-Case and split identities are deterministic: from the same saved inputs `fingerprint` should report `episode_ids_sha256` `bf37782de288e36947531270098232ede51f1a1bfbd7ce115aabf36c1a13ef7f` for both sets, `splits_sha256` `43b03d4512f7b6ae75064eeafd28499ae714dab8c096ec11cbc8c7d35e67870a` (v1) and `059928762658fb72acfb39431e584a65f9383c98077d2cea9ad4166309f4e505` (v2), 1,321 history-complete cases and 4,376 rule labels. Manifest hashes differ between machines because they include run UUIDs. `train` refuses a superseded set or any set whose grouping audit finds a facility crossing splits. Frozen sets, reviews, features and model records cannot be updated or deleted (migration 0007); build a new version instead.
+Case and split identities are deterministic: from the same saved inputs `fingerprint` should report `episode_ids_sha256` `bf37782de288e36947531270098232ede51f1a1bfbd7ce115aabf36c1a13ef7f` for both sets, `splits_sha256` `43b03d4512f7b6ae75064eeafd28499ae714dab8c096ec11cbc8c7d35e67870a` (v1) and `059928762658fb72acfb39431e584a65f9383c98077d2cea9ad4166309f4e505` (v2) and, for `case-features-v4`, feature `sha256` `b178a6e0ee1ecee949dc4c968aeeb55396eff509e7cd1fae2eca201ba23b6454` with 10,035 history-complete cases, 9,131 rule labels and 240 registry labels (`case-features-v3`, before the backfill: `b453edc6…c5620`, 1,321 and 4,376). Manifest hashes differ between machines because they include run UUIDs. `train` refuses a superseded set or any set whose grouping audit finds a facility crossing splits. Frozen sets, reviews, features and model records cannot be updated or deleted (migration 0007); build a new version instead.
 
-Blind review: set `ANNOTATION_TOKEN` in `.env` to a long random value (share it privately; never commit it) and, on the server reviewers use, `REVIEW_ONLY=true` so rule assessments are withheld. Restart `make dev-api`, open `http://127.0.0.1:5173/#/review`, enter a name and work down the queue (history-complete cases come first). Cite each source with its type, date and licence and say where the source lies relative to the pixel area; only dated imagery near the episode or an official/company source, with the source inside the pixel area and at least medium certainty, can make a label test truth. Test cases need two different people; disagreements go to a third. Endpoints: `GET /api/v1/annotation/case-sets`, `GET /api/v1/annotation/{set}/queue?reviewer=`, `GET /api/v1/annotation/{set}/cases/{case_id}`, `POST /api/v1/annotation/{set}/reviews` (header `X-Annotation-Token`; body `source_location` and evidence items `{url, kind, observed_on, licence}`), `GET /api/v1/annotation/{set}/summary`, `GET /api/v1/models`.
+Blind review (personal accounts, ADR-023). On the server reviewers use, set `REVIEW_ONLY=true` in `.env` so rule assessments are withheld, then add one account per person:
 
-History backfill (follow-up, owner-run with the FIRMS key): NOAA-20 SP 2025-12-30 to 2026-03-29 for all 14 regions (18 five-day requests each, 252 total), saved with sidecars and imported with `scripts/import_saved.py`, would give every case a complete 90-day window. It needs a new feature version afterwards.
+```bash
+make ml ARGS="add-reviewer --name 'Priya S'"                # writes local/reviewer-tokens/priya-s-<time>.token
+make ml ARGS="add-reviewer --name 'Arun K' --adjudicator"   # may settle disagreements
+make ml ARGS="list-reviewers"                               # names, roles, review counts (never tokens)
+make ml ARGS="rotate-reviewer-token --name 'Priya S'"       # new token; the old one stops working
+make ml ARGS="deactivate-reviewer --name 'Priya S'"         # reopen later with reactivate-reviewer
+make ml ARGS="void-reviewer --name 'Priya S'"               # misused token: reviews stop counting
+```
+
+Give each person their own token privately (never in chat or a commit), then delete the token file; it is shown nowhere else and cannot be recovered (rotate to reissue). Tokens travel in `Authorization: Bearer …`; use HTTPS whenever the server is not on the reviewer's own machine. Restart `make dev-api`, open `http://127.0.0.1:5173/#/review`, sign in with the personal token and work down the queue (history-complete cases first). Cite each source with its type, date and licence and say where the source lies relative to the pixel area; only dated imagery near the episode or an official/company source, with the source inside the pixel area and at least medium certainty, can make a label test truth. Test cases need two different people; disagreements go to an adjudicator account. Reviewers see only their own progress; the owner follows labels with `make ml ARGS="summary --case-set p05-pilot-v2"`. Endpoints: `GET /api/v1/annotation/case-sets`, `GET /api/v1/annotation/me`, `GET /api/v1/annotation/{set}/queue`, `GET /api/v1/annotation/{set}/cases/{case_id}` (returns `your_role`), `POST /api/v1/annotation/{set}/reviews` (body `expected_role` = `your_role`, `source_location`, evidence items `{url, kind, observed_on, licence}`; 409 `CASE_CHANGED` if someone saved first), `GET /api/v1/models`. This is team-pilot sign-in, not single sign-on (no passwords, expiry or second factor).
+
+Mac check of a branch without touching the main checkout: `scripts/verify_p05_mac.sh` (copy it with a `git bundle` of the branch and `expected-sha.txt` into `local/p05-verify/`, then run it from the checkout root). It clones into `local/p05-verify/clone`, reuses the pinned toolchains, copies only `DATABASE_URL`, runs install, the XGBoost probe, `make check` and `make integration`, and writes a redacted report.
 
 ## Database checks and lifecycle
 

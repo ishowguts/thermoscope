@@ -206,4 +206,39 @@ No new retrieval. `p05-pilot-v2` (facility-aware grouping, 2,437 groups) superse
 | vizag | 233 | 41 | 2 |
 | **Total** | **10,318** | **1,321** | **149** |
 
-Complete windows for every case need NOAA-20 SP from **30 December 2025 to 29 March 2026**: 18 bounded five-day requests per region, 252 in total, not yet fetched. 663 cases lie within 2 km of their region's OSM extract boundary, so their OSM inputs are missing rather than zero.
+Complete windows for every case need NOAA-20 SP from **30 December 2025 to 29 March 2026**: 18 bounded five-day requests per region, 252 in total (fetched on 27–28 September; see below). 663 cases lie within 2 km of their region's OSM extract boundary, so their OSM inputs are missing rather than zero.
+
+## NOAA-20 SP history backfill (28 September 2026 IST, ADR-022)
+
+| Item | Coverage |
+|---|---|
+| Product | `VIIRS_NOAA20_SP` (NASA FIRMS area API, standard processing) |
+| Dates | 30 December 2025 – 29 March 2026, 18 five-day windows per region |
+| Regions | All 14 pilot regions (same bounding boxes as the rest of P05) |
+| Files | 252 CSVs with `.meta.json` sidecars in the Mac's ignored `local/p05-backfill/raw/`; hashes, received times and row counts in `docs/inventory/p05-backfill-files.csv` (SHA-256 `af18a0d0…1358`) |
+| Retrieved | 27 September 2026 18:09–18:22 UTC (28 September IST), HTTP 200 for every request; 13 windows returned no detections |
+| Rows | 27,363 detections (Jharia 7,248, Talcher 7,052, Korba 3,709, Mumbai 3,019, Simlipal 1,557, Singrauli 1,456, Visakhapatnam 855, Paradip 832, Jamnagar 793, Haldia 411, Panipat 304, KG basin 79, Punjab 29, Mathura 19) |
+| Import | 252 runs `SUCCEEDED` as historical replay, 0 quarantined rows |
+
+The saved NOAA-20 archive now covers every day from 30 December 2025 to 26 September 2026 for every region (SP to 30 June, NRT from 1 July); the `features` guard found no missing day for `p05-pilot-v2`. History eligibility under `case-features-v4`:
+
+| Region | Cases | History-complete | of which TEST |
+|---|---|---|---|
+| haldia | 61 | 61 | 2 |
+| jamnagar | 298 | 294 | 59 |
+| jharia | 1,061 | 1,059 | 110 |
+| kgbasin | 347 | 342 | 63 |
+| korba | 962 | 910 | 129 |
+| mathura | 213 | 208 | 41 |
+| mumbai | 817 | 781 | 151 |
+| panipat | 1,103 | 1,072 | 198 |
+| paradip | 93 | 90 | 18 |
+| punjab | 3,009 | 2,914 | 508 |
+| simlipal | 14 | 13 | 1 |
+| singrauli | 1,161 | 1,140 | 223 |
+| talcher | 946 | 924 | 175 |
+| vizag | 233 | 227 | 40 |
+| **Total** | **10,318** | **10,035** | **1,718** |
+
+The 283 remaining cases lie within 750 m of their region's bounding box, so part of their history circle was never fetched; they stay set aside.
+
