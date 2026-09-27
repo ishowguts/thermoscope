@@ -152,3 +152,26 @@ Base `31f0498` (P03 handoff). Commits `9c1f788` (history and rules), `8357770` (
 | Secret scan | Workspace database password: zero matches in each diff; no FIRMS key in the cloud workspace | The Mac `.env` was read only inside the bridge shell |
 
 Open items: thresholds need calibration on reviewed cases (P05); 180-day windows are ~50% covered until the SP archive is added; the Mac run; the P03 hard-case review.
+
+## 27 September 2026 — independent P03/P04 review and Mac integration
+
+The `p04-history` head `f7e99dc` was reviewed in an isolated worktree/database. Baseline 104 unit/API + 11 PostGIS checks passed on Mac. Five independently reproduced failing regression cases exposed missing-history, product/partial coverage, OSM boundary and raster-window defects; these were fixed. A sixth regression and actual source inspection exposed a solar photovoltaic feature treated as industrial heat evidence. Review commit `329b716` contains the corrections; details in internal record P03-P04-REVIEW.
+
+**Correction to the older P03/P04 records above:** OSM way 1002375165 is tagged solar photovoltaic. It is not evidence of a combustion heat source. Three old industrial rule outputs are now UNKNOWN; all seven recent observations around that feature are UNKNOWN. No incident or actual source has been independently established. The earlier recorded outputs remain historical implementation behavior, not accepted truth.
+
+| Check | Result | Limits |
+| --- | --- | --- |
+| Frozen Mac install | Python/npm install, rasterio/NumPy and direct WorldCover reads succeeded on macOS 26.3 arm64 | PostGIS runs in the pinned amd64 Docker image under emulation |
+| Automated review checks | 106 unit/API + 15 PostGIS tests passed; lint/format/typecheck/build passed | Six review regressions; fixtures remain separate from real inputs |
+| Real provider/context | Adapter OSM Jamnagar run `a1ddd2ea-a052-4269-874a-c028700112f2`: 313 accepted, 0 rejected; WorldCover 13/13 success | Three-region pilot, dated 2021 land cover, no truth labels |
+| Data loading | 232 saved history rows + 13 recent observations = 245; 133 events / 45 sites; raw hashes matched inventory | History retrieval is not continuous cloud-free coverage |
+| Built browser | Solar UNKNOWN and source tags; operational replay excludes unavailable history/context; timeline/table; Punjab and list-only flow; zero warnings/errors | Desktop Mac; forced WebGL context loss and mobile not exercised in this review |
+| Main migration/data preservation | 0002 → 0005; preexisting 13-observation fingerprint `54a75ac875ca21352d81dc5dd80e2469` unchanged; original 33 receipts retained | Backup directory inspected; full restore not performed |
+| Main runtime | API ready HTTP 200; all 13 recent assessments return rules-v2; 3 solar abstentions asserted; historical reimport 0 inserted / 7 duplicates; 245 total unchanged | Main is a local research preview, not a public deployment |
+| Review branch CI | [Run 36313891363](https://github.com/ishowguts/thermoscope/actions/runs/36313891363) succeeded on `329b716` | Clean GitHub checkout |
+| Integrated main CI | [Run 36314032712](https://github.com/ishowguts/thermoscope/actions/runs/36314032712), job `108605230663`, succeeded on `b87fa869cbf7a1e1c804d9673ac5ec0c3f8a1d7e`; frozen install, make check and make integration all success | Final checkpoint is documentation only; no application changes after this run |
+| Human domain review | Three-case sheet prepared with hashes, dates, limitations and blank reviewer fields | Pending; no generated human sign-off or gold labels |
+
+Main preserves original branch authorship, both merge histories, and the newer P05 handoff. P05 branch `4b76b57` is not merged or independently accepted here. Additional P05 files were left untouched; the import allowlist was narrowed after newly collected regions caused the initial inventory guard to stop before OSM/history ingestion. No data corruption occurred. The first main push was rejected because a documentation handoff advanced the remote; it was merged normally, then pushed without rewriting history.
+
+Temporary 8001/5175 review servers and the stale 5174 preview were stopped. Main 8000/5173 and PostGIS 55432 remain. Review database and local evidence retained. No SIH submission, deck modification, public release or paid resource was performed in this task.
