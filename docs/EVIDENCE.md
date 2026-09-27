@@ -155,7 +155,7 @@ Open items: thresholds need calibration on reviewed cases (P05); 180-day windows
 
 ## P05 implementation and verification — 27 September 2026 IST (branch `p05-model`)
 
-Base `f7e99dc` (P04 handoff). Commits `c17a888` (data, events v2, batch jobs), `ad882aa` (labels, API, model pipeline), `f62d15c` (review page), plus the documentation checkpoint containing this record. Linux x86_64 cloud workspace, Python 3.13.15, PostGIS 18-3.6 (digest-pinned), Node 24.21.0. **Not run on the owner's Mac.**
+Base `f7e99dc` (P04 handoff). Commits `c17a888` (data, events v2, batch jobs), `ad882aa` (labels, API, model pipeline), `f62d15c` (review page), `956b352` (documentation), plus the handoff commit. Linux x86_64 cloud workspace, Python 3.13.15, PostGIS 18-3.6 (digest-pinned), Node 24.21.0. **Not run on the owner's Mac.**
 
 | Check | Observed result | Scope / limitation |
 |---|---|---|
@@ -170,6 +170,7 @@ Base `f7e99dc` (P04 handoff). Commits `c17a888` (data, events v2, batch jobs), `
 | Training, `--dry-run-weak` | `DRY_RUN_NOT_EVIDENCE` (`6a6adc6e…`, `256d428c…`), 6,103 train / 1,892 validation / 1,659 test rule-labelled cases, 4.4 s; model card withholds scores; metrics carry a do-not-quote notice | Circular by design: proves only that the pipeline runs |
 | `make check` | Ruff clean; **133 passed** (new: split/group, review order, tiers, kappa, review validation, token/CORS, feature leakage guard, metrics, abstention, calibration, group bootstrap, dry-run card, synthetic end-to-end training); Prettier; `tsc`; Vite build (review page is a separate 14 kB chunk) | Map chunk still over 500 kB |
 | `make integration` | **13 passed** (new: registry import idempotency/conflict, case-set freeze and manifest hash, features, blind case payload, two reviews → disagreement → adjudication, duplicate and excess reviews refused, summary, training gate and artifacts; NRT+SP one stream and overlap refusal) | Disposable databases |
+| GitHub Actions | Run 36313643893 on `956b352`: **completed / success** — clean Ubuntu install including `make install-ml` (xgboost-cpu 3.4.1), 133 unit/API and 13 PostGIS tests passed with none skipped | Linux only |
 | Saved-data importer | Scratch database: 2 FIRMS files + 1 OSM response imported, second run inserted 0 | Then dropped |
 | API timing (10,318 cases) | Queue 0.12–0.16 s, summary 0.06 s, blind case 0.04 s | Local workspace |
 | Browser (headless Chromium) | Review page at 1440 px and 390 px: queue, blind evidence, detections table, validation message, wrong token → "The review token was not accepted.", navigation back to observations; no page errors (only the expected 401 and SwiftShader WebGL warnings). Screenshots outside Git: `review-case-wide.png` `6c78caeb…`, `review-case-phone.png` `e1fb009d…`, `review-case2-wide.png` `5a594031…`, `review-validate-wide.png` `c25e67e0…` | **No review was submitted to the real case set**: labels come only from people |
