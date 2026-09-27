@@ -26,7 +26,9 @@ def main(argv=None):
             "fingerprint",
             "add-reviewer",
             "rotate-reviewer-token",
+            "reactivate-reviewer",
             "deactivate-reviewer",
+            "void-reviewer",
             "list-reviewers",
         ],
     )
@@ -47,6 +49,12 @@ def main(argv=None):
     parser.add_argument("--file", type=Path)
     parser.add_argument("--sha256")
     parser.add_argument("--retrieved-at", type=datetime.fromisoformat)
+    parser.add_argument(
+        "--allow-partial-history",
+        action="store_true",
+        help="features: write rows even though the saved archive misses part of the history "
+        "window (those cases are set aside by history-eligibility-v1)",
+    )
     parser.add_argument(
         "--dry-run-weak",
         action="store_true",
@@ -81,7 +89,11 @@ def main(argv=None):
         elif args.command == "features":
             from thermoscope.ml import compute_case_features
 
-            report = compute_case_features(settings, _need(parser, args.case_set))
+            report = compute_case_features(
+                settings,
+                _need(parser, args.case_set),
+                allow_partial_history=args.allow_partial_history,
+            )
         elif args.command == "train":
             from thermoscope.ml import train_and_evaluate
 
@@ -92,32 +104,44 @@ def main(argv=None):
             from thermoscope.labels import grouping_audit
 
             report = grouping_audit(settings, _need(parser, args.case_set))
-        elif args.command in {"add-reviewer", "rotate-reviewer-token"}:
+        elif args.command in {"add-reviewer", "rotate-reviewer-token", "reactivate-reviewer"}:
             from thermoscope import reviewers
 
             if not args.name:
                 parser.error(f"{args.command} needs --name")
-            target = args.token_file or _token_path(args.name)
-            if target.exists():  # checked before the account changes, so no token is lost
-                raise FileExistsError(target)
-            if args.command == "add-reviewer":
-                account, token = reviewers.add_reviewer(settings, args.name, args.adjudicator)
-            else:
-                token = reviewers.rotate_token(settings, args.name)
-                account = {"name": args.name, "token": "rotated; the old token no longer works"}
-            path = reviewers.write_token_file(target, token)
+            # The token is saved to the owner-only file first; the account changes only after
+            # that succeeded, and the file is removed again if the account change fails.
+            token = reviewers.new_token()
+            path = reviewers.write_token_file(args.token_file or _token_path(args.name), token)
+            try:
+                if args.command == "add-reviewer":
+                    account, _ = reviewers.add_reviewer(
+                        settings, args.name, args.adjudicator, token=token
+                    )
+                elif args.command == "rotate-reviewer-token":
+                    reviewers.rotate_token(settings, args.name, token=token)
+                    account = {"name": args.name, "token": "replaced; the old one no longer works"}
+                else:
+                    reviewers.reactivate(settings, args.name, token=token)
+                    account = {"name": args.name, "active": True, "token": "new"}
+            except BaseException:
+                path.unlink(missing_ok=True)
+                raise
             report = account | {
                 "token_file": str(path),
                 "next": "Give this token to the reviewer privately, then delete the file. It is "
                 "not stored on the server and cannot be shown again (rotate to reissue).",
             }
-        elif args.command == "deactivate-reviewer":
-            from thermoscope.reviewers import deactivate
+        elif args.command in {"deactivate-reviewer", "void-reviewer"}:
+            from thermoscope import reviewers
 
             if not args.name:
-                parser.error("deactivate-reviewer needs --name")
-            deactivate(settings, args.name)
-            report = {"name": args.name, "active": False}
+                parser.error(f"{args.command} needs --name")
+            if args.command == "deactivate-reviewer":
+                reviewers.deactivate(settings, args.name)
+                report = {"name": args.name, "active": False}
+            else:
+                report = reviewers.void_reviews(settings, args.name)
         elif args.command == "list-reviewers":
             from thermoscope.reviewers import list_reviewers
 
@@ -134,6 +158,10 @@ def main(argv=None):
         return 0
     except FileExistsError:
         print(json.dumps({"status": "FAILED", "error_code": "TOKEN_FILE_EXISTS"}))
+        return 1
+    except OSError as error:
+        print(json.dumps({"status": "FAILED", "error_code": "TOKEN_FILE_NOT_WRITTEN",
+                          "detail": error.strerror}))  # fmt: skip
         return 1
     except (IngestError, ValueError, LookupError) as error:
         code = error.code if isinstance(error, IngestError) else "INVALID_REQUEST"

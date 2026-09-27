@@ -22,6 +22,7 @@ from thermoscope.labels import (
     SOURCE_LABELS,
     SOURCE_LOCATIONS,
     SUBTYPES,
+    CaseChanged,
     CaseSetSuperseded,
     label_summary,
     list_case_sets,
@@ -62,6 +63,8 @@ class ReviewIn(BaseModel):
     industrial_subtype: Literal[SUBTYPES] | None = None
     certainty: Literal["HIGH", "MEDIUM", "LOW"]
     source_location: Literal[SOURCE_LOCATIONS] | None = None
+    # The role shown with the case (`your_role`); refused with 409 if the case changed since.
+    expected_role: Literal["REVIEWER", "ADJUDICATOR"]
     evidence: list[EvidenceIn] = Field(default_factory=list, max_length=5)
     notes: str | None = Field(default=None, max_length=2000)
 
@@ -93,7 +96,7 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
         return error_response(
             request,
             "WITHHELD_ON_REVIEW_SERVER",
-            "Automated assessments are withheld on the blind-review server.",
+            "Withheld on the blind-review server: no automated assessments or label progress.",
             403,
         )
 
@@ -417,6 +420,8 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
             return error_response(request, "NOT_FOUND", "No such case in this case set.", 404)
         except PermissionError:
             return unauthorized(request)
+        except CaseChanged as error:
+            return error_response(request, "CASE_CHANGED", str(error), 409)
         except CaseSetSuperseded as error:
             return error_response(request, "CASE_SET_SUPERSEDED", str(error), 409)
         except ValueError as error:
@@ -430,6 +435,10 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
 
     @app.get("/api/v1/annotation/{case_set}/summary")
     def annotation_summary(request: Request, case_set: Annotated[str, CASE_SET]):
+        # Label tiers, agreement and pending adjudications change as each review is saved, so a
+        # reviewer could tell whether they agreed with the first; owners use `make ml summary`.
+        if config.review_only:
+            return withheld(request)
         try:
             return label_summary(config, case_set)
         except IngestError:

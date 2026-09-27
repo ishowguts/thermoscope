@@ -30,8 +30,10 @@ from thermoscope.reviewers import (
     add_reviewer,
     deactivate,
     list_reviewers,
+    reactivate,
     rotate_token,
     token_sha256,
+    void_reviews,
 )
 
 pytestmark = pytest.mark.integration
@@ -106,10 +108,14 @@ def test_case_set_reviews_features_and_training_gate(configured):
     with pytest.raises(IngestError, match="CASE_SET_EXISTS"):
         build_case_set(configured, "fixture-set", DataMode.SYNTHETIC_FIXTURE)
 
-    features = compute_case_features(configured, "fixture-set")
+    # Feature rows are immutable, so they are not written on a truncated archive by accident.
+    with pytest.raises(ValueError, match="HISTORY_ARCHIVE_INCOMPLETE"):
+        compute_case_features(configured, "fixture-set")
+    features = compute_case_features(configured, "fixture-set", allow_partial_history=True)
+    assert features["history_archive"]["regions_short"][0]["region_id"] == "jamnagar"
     assert features["cases"] == 12 and features["silver_labels"] == 1  # the coal station
     assert features["history_complete"] == 0  # one fixture day: no 90-day history anywhere
-    again = compute_case_features(configured, "fixture-set")
+    again = compute_case_features(configured, "fixture-set", allow_partial_history=True)
     assert again["cases"] == 0 and again["unchanged"] == 12  # stored version reused, not rewritten
 
     client = TestClient(create_app(configured))
@@ -147,13 +153,15 @@ def test_case_set_reviews_features_and_training_gate(configured):
     assert case.status_code == 200
     blind = case.json()
     assert blind["blind"] and blind["adjudication"] is None and not blind["reviewed_by_you"]
+    assert blind["your_role"] == "REVIEWER"
     for hidden in ("weak", "silver", "rule", "p_industrial", "probability", "score"):
         assert hidden not in case.text.lower(), hidden
     assert blind["links"][0]["url"].startswith("https://worldview.earthdata.nasa.gov/")
 
-    def post(who, label, evidence=(IMAGERY,), where=base, headers=None):
+    def post(who, label, evidence=(IMAGERY,), where=base, headers=None, role="REVIEWER"):
         payload = {"case_id": case_id, "source_label": label, "certainty": "MEDIUM",
-                   "source_location": "INSIDE_PIXEL_AREA", "evidence": list(evidence)}  # fmt: skip
+                   "source_location": "INSIDE_PIXEL_AREA", "evidence": list(evidence),
+                   "expected_role": role}  # fmt: skip
         return client.post(f"{where}/reviews", json=payload,
                            headers=auth(who) if headers is None else headers)  # fmt: skip
 
@@ -169,27 +177,36 @@ def test_case_set_reviews_features_and_training_gate(configured):
     assert post("Asha", "OTHER").status_code == 422  # one review per account per case
     assert post("Ben", "AGRICULTURAL_BURN").json()["role"] == "REVIEWER"
 
-    # The disagreement is settled only by an adjudicator account that did not review the case.
+    # The disagreement is settled only by an adjudicator account that did not review the case,
+    # and only from the adjudication view: a review written blind is refused with the same
+    # answer whatever changed, so it neither becomes the deciding label nor reveals the split.
     dev = client.get(f"{base}/queue", headers=auth("Dev")).json()
-    assert dev["adjudication"] == [] and dev["remaining_adjudications"] == 1
+    assert dev["adjudication"] == [] and dev["remaining_adjudications"] is None
     assert client.get(case_url, headers=auth("Dev")).json()["adjudication"] is None
-    waiting = post("Dev", "INDUSTRIAL")
-    assert waiting.status_code == 422 and "adjudicator" in waiting.json()["message"]
+    for who, role in (("Dev", "REVIEWER"), ("Dev", "ADJUDICATOR"), ("Chen", "REVIEWER")):
+        stale = post(who, "OTHER", role=role)
+        assert stale.status_code == 409 and stale.json()["code"] == "CASE_CHANGED", (who, role)
+    asha_queue = client.get(f"{base}/queue", headers=auth("Asha")).json()
+    assert asha_queue["your_reviews"] == 1 and asha_queue["remaining_adjudications"] is None
     asha_view = client.get(case_url, headers=auth("Asha")).json()
     assert asha_view["adjudication"] is None and asha_view["reviewed_by_you"]
     chen = client.get(f"{base}/queue", headers=auth("Chen")).json()
     assert [i["case_id"] for i in chen["adjudication"]] == [case_id]
-    detail = client.get(case_url, headers=auth("Chen")).json()["adjudication"]
+    chen_view = client.get(case_url, headers=auth("Chen")).json()
+    assert chen_view["your_role"] == "ADJUDICATOR"
+    detail = chen_view["adjudication"]
     assert detail["needed"] and len(detail["earlier_reviews"]) == 2
     assert "reviewer" not in json.dumps(detail["earlier_reviews"])
     assert "Asha" not in json.dumps(detail) and "Ben" not in json.dumps(detail)
-    assert post("Chen", "AGRICULTURAL_BURN").json()["role"] == "ADJUDICATOR"
-    assert post("Dev", "INDUSTRIAL").status_code == 422  # nothing left to review
+    assert post("Chen", "AGRICULTURAL_BURN", role="ADJUDICATOR").json()["role"] == "ADJUDICATOR"
+    assert post("Dev", "INDUSTRIAL").status_code == 409  # nothing left to review
 
     # Rotation replaces a token; deactivation locks the account out; accounts are listed with
     # their review counts, never their tokens.
     old = tokens["Ben"]
     tokens["Ben"] = rotate_token(configured, "ben")
+    with pytest.raises(LookupError):
+        reactivate(configured, "Ben")  # still active: nothing to reopen
     assert client.get("/api/v1/annotation/me",
                       headers={"Authorization": f"Bearer {old}"}).status_code == 401  # fmt: skip
     assert client.get("/api/v1/annotation/me", headers=auth("Ben")).status_code == 200
@@ -197,6 +214,11 @@ def test_case_set_reviews_features_and_training_gate(configured):
     assert client.get("/api/v1/annotation/me", headers=auth("Ben")).status_code == 401
     with pytest.raises(LookupError):
         deactivate(configured, "Nobody")
+    with pytest.raises(LookupError):
+        rotate_token(configured, "Ben")  # a closed account is reopened, not silently rotated
+    tokens["Ben"] = reactivate(configured, "Ben")
+    assert client.get("/api/v1/annotation/me", headers=auth("Ben")).status_code == 200
+    deactivate(configured, "Ben")
     listed = list_reviewers(configured)
     assert {r["name"]: (r["reviews"], r["active"]) for r in listed} == {
         "Asha": (1, True), "Ben": (1, False), "Chen": (1, True), "Dev": (0, True),
@@ -261,6 +283,23 @@ def test_case_set_reviews_features_and_training_gate(configured):
         case_set_fingerprint(configured, "fixture-set")["splits_sha256"] == (after["splits_sha256"])
     )
 
+    # A misused token: its reviews stay stored but stop counting, the adjudication it provoked no
+    # longer settles anything, the case returns to the queue, and the account stays closed.
+    assert void_reviews(configured, "Ben")["reviews_voided"] == 1
+    voided = label_summary(configured, "fixture-set")
+    assert voided["gold_test_labels"] == {} and voided["reviews_voided"] == 1
+    assert voided["reviews_total"] == 2 and voided["double_reviewed_cases"] == 0
+    dev = client.get(f"{base}/queue", headers=auth("Dev")).json()
+    reopened = next(i for i in dev["review"] if i["case_id"] == case_id)
+    assert reopened["reviews"] == 1 and reopened["needs"] == 2
+    with pytest.raises(ValueError, match="stays closed"):
+        reactivate(configured, "Ben")
+    with pytest.raises(LookupError):
+        void_reviews(configured, "Ben")
+    with pytest.raises(DBAPIError, match="stay voided"):
+        with database_engine(configured) as engine, engine.begin() as conn:
+            conn.execute(text("UPDATE reviewers SET reviews_voided_at=NULL WHERE name='Ben'"))
+
     with pytest.raises(ValueError, match="superseded"):
         train_and_evaluate(configured, "fixture-v1")
     reviewed = train_and_evaluate(configured, "fixture-set")
@@ -276,3 +315,38 @@ def test_case_set_reviews_features_and_training_gate(configured):
     assert dry["status"] == "DRY_RUN_NOT_EVIDENCE"
     models = client.get("/api/v1/models").json()["models"]
     assert {m["status"] for m in models} == {"INSUFFICIENT_LABELS", "DRY_RUN_NOT_EVIDENCE"}
+    # Downgrading would drop who wrote each review, so it is refused once accounts exist.
+    with pytest.raises(DBAPIError, match="reviewer accounts exist"):
+        command.downgrade(Config("alembic.ini"), "0007_review_integrity")
+
+
+def test_reviewer_cli_saves_tokens_privately_and_never_prints_them(configured, tmp_path, capsys):
+    from thermoscope.ml_cli import main
+    from thermoscope.reviewers import authenticate
+
+    first = tmp_path / "asha.token"
+    assert (
+        main(["add-reviewer", "--name", "Asha", "--adjudicator", "--token-file", str(first)]) == 0
+    )
+    out = capsys.readouterr().out
+    token = first.read_text().strip()
+    assert token not in out and json.loads(out)["can_adjudicate"] is True
+    assert first.stat().st_mode & 0o777 == 0o600
+    # An existing file is refused before the account changes, so no working token is lost.
+    assert main(["rotate-reviewer-token", "--name", "Asha", "--token-file", str(first)]) == 1
+    assert "TOKEN_FILE_EXISTS" in capsys.readouterr().out
+    assert authenticate(configured, token)["name"] == "Asha"
+    # A refused account change removes the file it had written.
+    duplicate = tmp_path / "duplicate.token"
+    assert main(["add-reviewer", "--name", "asha", "--token-file", str(duplicate)]) == 1
+    assert "already exists" in capsys.readouterr().out and not duplicate.exists()
+    rotated = tmp_path / "rotated.token"
+    assert main(["rotate-reviewer-token", "--name", "Asha", "--token-file", str(rotated)]) == 0
+    assert authenticate(configured, token) is None
+    assert authenticate(configured, rotated.read_text().strip())["can_adjudicate"] is True
+    assert main(["list-reviewers"]) == 0
+    listing = capsys.readouterr().out
+    assert token not in listing and rotated.read_text().strip() not in listing
+    assert main(["void-reviewer", "--name", "Asha"]) == 0
+    assert json.loads(capsys.readouterr().out)["reviews_voided"] == 0
+    assert authenticate(configured, rotated.read_text().strip()) is None

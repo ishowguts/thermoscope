@@ -2,8 +2,11 @@
 
 Each reviewer signs in with a personal random token. Only the token's SHA-256 is stored; the
 account, not the request body, names the reviewer. Accounts are never deleted and their identity
-never changes (deactivate or rotate the token instead). Every new review must carry an account;
-reviews saved before this revision (none exist in any known database) keep their typed name.
+never changes (deactivate or rotate the token instead). If a token was misused, the owner voids the
+account's reviews: they stay stored but no longer count, and a voided account stays closed. Every
+new review must carry an account; reviews saved before this revision (none exist in any known
+database) keep their typed name. Downgrading is refused once any account exists, because it would
+drop the link between reviews and the people who wrote them.
 """
 
 from alembic import op
@@ -25,7 +28,9 @@ def upgrade():
             created_at timestamptz NOT NULL,
             token_issued_at timestamptz NOT NULL,
             deactivated_at timestamptz,
-            CHECK (active OR deactivated_at IS NOT NULL)
+            reviews_voided_at timestamptz,
+            CHECK (active OR deactivated_at IS NOT NULL),
+            CHECK (reviews_voided_at IS NULL OR NOT active)
         );
         CREATE UNIQUE INDEX ux_reviewers_name ON reviewers (lower(name));
         CREATE FUNCTION thermoscope_reviewer_guard() RETURNS trigger
@@ -37,6 +42,11 @@ def upgrade():
             END IF;
             IF NEW.id <> OLD.id OR NEW.name <> OLD.name OR NEW.created_at <> OLD.created_at THEN
                 RAISE EXCEPTION 'reviewer identity is immutable; add a new account'
+                    USING ERRCODE = 'restrict_violation';
+            END IF;
+            IF OLD.reviews_voided_at IS NOT NULL
+                    AND NEW.reviews_voided_at IS DISTINCT FROM OLD.reviews_voided_at THEN
+                RAISE EXCEPTION 'voided reviews stay voided; add a new account'
                     USING ERRCODE = 'restrict_violation';
             END IF;
             RETURN NEW;
@@ -57,6 +67,12 @@ def upgrade():
 
 def downgrade():
     op.execute("""
+        DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM reviewers) THEN
+                RAISE EXCEPTION 'reviewer accounts exist; restore a backup instead of downgrading'
+                    USING ERRCODE = 'restrict_violation';
+            END IF;
+        END $$;
         DROP INDEX ux_label_reviews_account;
         ALTER TABLE label_reviews DROP CONSTRAINT label_reviews_signed_in;
         ALTER TABLE label_reviews DROP COLUMN reviewer_id;

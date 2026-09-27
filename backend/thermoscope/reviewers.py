@@ -5,7 +5,8 @@ the token's SHA-256, looks the reviewer up from the token on every request and r
 account with each review, so a reviewer can no longer type someone else's name. This is sign-in
 for a small team pilot, not single sign-on: there are no passwords, expiry or second factor, and
 tokens must travel privately (and over HTTPS off this computer). Owners rotate or deactivate a
-token when it may have leaked; accounts are never deleted.
+token when it may have leaked, and void an account's reviews if the token was misused; accounts are
+never deleted.
 """
 
 import hashlib
@@ -32,8 +33,14 @@ def token_sha256(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def _issue() -> tuple[str, str]:
-    token = TOKEN_PREFIX + secrets.token_urlsafe(32)  # 256 random bits
+def new_token() -> str:
+    return TOKEN_PREFIX + secrets.token_urlsafe(32)  # 256 random bits
+
+
+def _issue(token: str | None = None) -> tuple[str, str]:
+    token = token or new_token()
+    if not TOKEN.fullmatch(token):
+        raise ValueError("not a reviewer token")
     return token, token_sha256(token)
 
 
@@ -44,10 +51,11 @@ def _clean_name(name: str) -> str:
     return name
 
 
-def add_reviewer(settings: Settings, name: str, can_adjudicate: bool = False):
-    """Create an account; returns (account, token). The token is shown once and never stored."""
+def add_reviewer(settings: Settings, name: str, can_adjudicate: bool = False, token=None):
+    """Create an account; returns (account, token). Only the token's hash is stored. The CLI
+    passes a token it has already saved to the owner's file, so a failed save loses nothing."""
     name = _clean_name(name)
-    token, digest = _issue()
+    token, digest = _issue(token)
     now = datetime.now(UTC)
     account = {"id": uuid4(), "name": name, "can_adjudicate": bool(can_adjudicate)}
     try:
@@ -62,33 +70,66 @@ def add_reviewer(settings: Settings, name: str, can_adjudicate: bool = False):
     return account | {"id": str(account["id"])}, token
 
 
-def _update(settings: Settings, name: str, sql: str, params: dict) -> None:
-    with database_engine(settings) as engine, engine.begin() as conn:
-        done = conn.execute(
-            text(f"UPDATE reviewers SET {sql} WHERE lower(name)=lower(:name)"),
-            params | {"name": _clean_name(name)},
-        ).rowcount
+def _update(settings: Settings, name: str, sql: str, where: str, params: dict, missing: str) -> int:
+    try:
+        with database_engine(settings) as engine, engine.begin() as conn:
+            done = conn.execute(
+                text(f"UPDATE reviewers SET {sql} WHERE lower(name)=lower(:name) AND {where}"),
+                params | {"name": _clean_name(name), "now": datetime.now(UTC)},
+            ).rowcount
+    except IntegrityError:
+        raise ValueError("a voided account stays closed; add a new account") from None
     if not done:
-        raise LookupError("no reviewer with that name")
+        raise LookupError(missing)
+    return done
 
 
-def rotate_token(settings: Settings, name: str) -> str:
-    """Issue a new token (the old one stops working) and reactivate the account."""
-    token, digest = _issue()
+def rotate_token(settings: Settings, name: str, token=None) -> str:
+    """Replace an active account's token; the old one stops working at once."""
+    token, digest = _issue(token)
+    _update(settings, name, "token_sha256=:h,token_issued_at=:now", "active", {"h": digest},
+            "no active reviewer with that name")  # fmt: skip
+    return token
+
+
+def reactivate(settings: Settings, name: str, token=None) -> str:
+    """Reopen a deactivated account with a new token (the old token never works again)."""
+    token, digest = _issue(token)
     _update(settings, name, "token_sha256=:h,token_issued_at=:now,active=true,deactivated_at=NULL",
-            {"h": digest, "now": datetime.now(UTC)})  # fmt: skip
+            "NOT active", {"h": digest}, "no deactivated reviewer with that name")  # fmt: skip
     return token
 
 
 def deactivate(settings: Settings, name: str) -> None:
-    _update(settings, name, "active=false,deactivated_at=:now", {"now": datetime.now(UTC)})
+    _update(settings, name, "active=false,deactivated_at=:now", "active", {},
+            "no active reviewer with that name")  # fmt: skip
+
+
+def void_reviews(settings: Settings, name: str) -> dict:
+    """For a misused token: close the account and stop all its reviews from counting (they stay
+    stored for audit). Affected cases return to the queue. Cannot be undone."""
+    _update(
+        settings,
+        name,
+        "active=false,deactivated_at=COALESCE(deactivated_at,:now),reviews_voided_at=:now",
+        "reviews_voided_at IS NULL",
+        {},
+        "no reviewer with that name, or already voided",
+    )
+    with database_engine(settings) as engine, engine.connect() as conn:
+        count = conn.execute(
+            text("""SELECT count(*) FROM label_reviews l JOIN reviewers r ON r.id=l.reviewer_id
+                WHERE lower(r.name)=lower(:name)"""),
+            {"name": _clean_name(name)},
+        ).scalar_one()
+    return {"name": _clean_name(name), "active": False, "reviews_voided": count}
 
 
 def list_reviewers(settings: Settings) -> list[dict]:
     with database_engine(settings) as engine, engine.connect() as conn:
         rows = conn.execute(
             text("""SELECT r.name,r.can_adjudicate,r.active,r.created_at,r.token_issued_at,
-                    r.deactivated_at,count(l.id) AS reviews
+                    r.deactivated_at,r.reviews_voided_at,count(l.id) AS reviews
                 FROM reviewers r LEFT JOIN label_reviews l ON l.reviewer_id=r.id
                 GROUP BY r.id ORDER BY lower(r.name)""")
         ).mappings()

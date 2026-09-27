@@ -125,6 +125,13 @@ def test_tiers_gold_needs_evidence_and_test_needs_two_agreeing_reviews():
     settled = resolve_label(split + [review("AGRICULTURAL_BURN", "ADJUDICATOR", who="c")], 2,
                             None, None)  # fmt: skip
     assert settled["label"] == "AGRICULTURAL_BURN" and eligible_for_test(settled)
+    # With one blind review voided, the adjudication no longer has a disagreement to settle; a
+    # later blind review reopens it for a new adjudicator (reviews are in saved order).
+    adjudication = review("AGRICULTURAL_BURN", "ADJUDICATOR", who="c")
+    alone = resolve_label([split[0], adjudication], 2, None, None)
+    assert alone["basis"] == "ONE_OF_TWO_REVIEWS" and not eligible_for_test(alone)
+    later = resolve_label([split[0], adjudication, review("OTHER", who="d")], 2, None, None)
+    assert later["basis"] == "DISAGREEMENT_PENDING_ADJUDICATION"
     unsure = resolve_label([review("UNRESOLVED", evidence=())], 1, "INDUSTRIAL", None)
     assert unsure["tier"] == "UNRESOLVED"  # a human "cannot decide" beats registry evidence
 
@@ -239,6 +246,15 @@ def test_kappa():
             {
                 "source_label": "OTHER",
                 "certainty": "HIGH",
+                "source_location": "NEARBY_ONLY",
+                "evidence": [IMAGERY],
+            },
+            "expected_role",
+        ),  # fmt: skip
+        (
+            {
+                "source_label": "OTHER",
+                "certainty": "HIGH",
                 "evidence": [{"url": URL}],
             },
             "evidence type",
@@ -257,7 +273,8 @@ WELL_FORMED = "tsr_" + "A" * 43
 
 def body():
     return {"case_id": "a" * 64, "source_label": "INDUSTRIAL", "certainty": "HIGH",
-            "source_location": "INSIDE_PIXEL_AREA", "evidence": [IMAGERY]}  # fmt: skip
+            "source_location": "INSIDE_PIXEL_AREA", "evidence": [IMAGERY],
+            "expected_role": "REVIEWER"}  # fmt: skip
 
 
 def test_bearer_token_accepts_only_the_personal_token_format():
@@ -297,6 +314,8 @@ def test_review_bodies_are_validated_and_cannot_name_a_reviewer():
     headers = {"Authorization": f"Bearer {WELL_FORMED}"}
     for bad in (
         body() | {"reviewer": "Somebody Else"},  # identity comes from the account only
+        {k: v for k, v in body().items() if k != "expected_role"},  # role shown must be sent
+        body() | {"expected_role": "OWNER"},
         body() | {"source_label": "FIRE"},
         body() | {"model_score": 0.9},
         body() | {"evidence": [URL]},  # a bare link without a type is no longer accepted
@@ -308,7 +327,10 @@ def test_review_bodies_are_validated_and_cannot_name_a_reviewer():
 def test_review_only_server_withholds_automated_assessments():
     client = TestClient(create_app(Settings(_env_file=None, database_url=None, review_only=True)))
     oid = "0" * 64
-    for path in (f"/api/v1/observations/{oid}/assessment", f"/api/v1/observations/{oid}/timeline"):
+    # Label progress (tiers, agreement, pending adjudications) would tell a second reviewer
+    # whether they agreed with the first, so it is withheld too.
+    for path in (f"/api/v1/observations/{oid}/assessment", f"/api/v1/observations/{oid}/timeline",
+                 "/api/v1/annotation/pilot-set/summary"):  # fmt: skip
         response = client.get(path)
         assert response.status_code == 403
         assert response.json()["code"] == "WITHHELD_ON_REVIEW_SERVER"

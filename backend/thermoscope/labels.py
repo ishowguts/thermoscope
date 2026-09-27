@@ -693,9 +693,14 @@ def qualifies(review: dict) -> bool:
 
 
 def resolve_label(reviews: list[dict], review_slots: int, silver: str | None, weak: str | None):
-    """Deterministic tiering from blind reviews, registry corroboration and rules."""
-    adjudications = [r for r in reviews if r["role"] == "ADJUDICATOR"]
+    """Deterministic tiering from blind reviews (in saved order), registry corroboration and
+    rules. An adjudication settles only the disagreement it was shown: it counts when two blind
+    reviews precede it and none came later (possible only after a review was voided, ADR-023)."""
     reviewers = [r for r in reviews if r["role"] == "REVIEWER"]
+    last = max((i for i, r in enumerate(reviews) if r["role"] == "REVIEWER"), default=-1)
+    adjudications = [
+        r for i, r in enumerate(reviews) if r["role"] == "ADJUDICATOR" and i > last
+    ] if len(reviewers) >= 2 else []  # fmt: skip
     if adjudications:
         a = adjudications[-1]
         if a["source_label"] == "UNRESOLVED":
@@ -740,12 +745,23 @@ def eligible_for_test(resolved: dict) -> bool:
     }
 
 
+# Reviews by an account whose reviews the owner voided (a misused token, ADR-023) stay stored for
+# audit but never count towards labels, queues or agreement. `r` is label_reviews.
+COUNTED = """NOT EXISTS (SELECT 1 FROM reviewers v
+    WHERE v.id=r.reviewer_id AND v.reviews_voided_at IS NOT NULL)"""
+
+
+class CaseChanged(Exception):
+    """The case's review state changed after the reviewer opened it (for example another person
+    saved first), so the review they wrote no longer fits the role they were shown."""
+
+
 def resolved_labels(conn, set_id) -> dict[str, dict]:
     reviews = defaultdict(list)
     for r in conn.execute(
-        text("""
+        text(f"""
         SELECT case_id,role,source_label,certainty,evidence,reviewer,reviewed_at
-        FROM label_reviews WHERE case_set_id=:s ORDER BY reviewed_at,id
+        FROM label_reviews r WHERE case_set_id=:s AND {COUNTED} ORDER BY reviewed_at,id
     """),
         {"s": set_id},
     ).mappings():
@@ -804,7 +820,7 @@ def review_queue(settings: Settings, set_ref: str, reviewer: dict, limit: int = 
         labels = resolved_labels(conn, set_id)
         rows = (
             conn.execute(
-                text("""
+                text(f"""
             SELECT c.id,c.split,c.region_id,c.as_of,c.review_slots,c.review_rank,
                 COUNT(r.id) FILTER (WHERE r.role='REVIEWER') AS reviews,
                 BOOL_OR(r.reviewer_id=CAST(:rid AS uuid) OR lower(r.reviewer)=lower(:who))
@@ -812,7 +828,7 @@ def review_queue(settings: Settings, set_ref: str, reviewer: dict, limit: int = 
                 COALESCE(BOOL_OR((f.features->>'history_complete')::boolean), false)
                     AS history_complete
             FROM label_cases c LEFT JOIN label_reviews r
-                ON r.case_set_id=c.case_set_id AND r.case_id=c.id
+                ON r.case_set_id=c.case_set_id AND r.case_id=c.id AND {COUNTED}
             LEFT JOIN case_features f ON f.case_set_id=c.case_set_id AND f.case_id=c.id
                 AND f.feature_version=:v
             WHERE c.case_set_id=:s
@@ -825,9 +841,10 @@ def review_queue(settings: Settings, set_ref: str, reviewer: dict, limit: int = 
             .all()
         )
         newer = superseded_by(conn, set_id)
-    adjudicate, review = [], []
+    adjudicate, review, done = [], [], 0
     for r in rows:
         if r["mine"]:
+            done += 1
             continue
         basis = labels[r["id"]]["basis"]
         item = {
@@ -851,10 +868,13 @@ def review_queue(settings: Settings, set_ref: str, reviewer: dict, limit: int = 
         # Frozen split-interleaved rank, with cases whose 90-day history is complete first:
         # only those are eligible for evaluation under history-eligibility-v1 (ADR-021).
         "queue_order": "history-complete-first-v1",
+        # Disagreements are listed, and counted, only for adjudicators; the cases a person
+        # reviewed never appear, so nobody learns from the queue whether they agreed.
         "adjudication": adjudicate[:limit] if reviewer["can_adjudicate"] else [],
         "review": review[:limit],
+        "your_reviews": done,
         "remaining_reviews": len(review),
-        "remaining_adjudications": len(adjudicate),
+        "remaining_adjudications": len(adjudicate) if reviewer["can_adjudicate"] else None,
     }
 
 
@@ -920,10 +940,10 @@ def review_case(settings: Settings, set_ref: str, case_id: str, reviewer: dict) 
         prior = [
             dict(r)
             for r in conn.execute(
-                text("""SELECT role,source_label,industrial_subtype,certainty,evidence,
+                text(f"""SELECT role,source_label,industrial_subtype,certainty,evidence,
                     evidence_date,notes,reviewed_at,
                     (reviewer_id=CAST(:rid AS uuid) OR lower(reviewer)=lower(:who)) AS mine
-                    FROM label_reviews WHERE case_set_id=:s AND case_id=:id
+                    FROM label_reviews r WHERE case_set_id=:s AND case_id=:id AND {COUNTED}
                     ORDER BY reviewed_at,id"""),
                 {"s": set_id, "id": case_id, "rid": reviewer["id"], "who": reviewer["name"]},
             ).mappings()
@@ -959,6 +979,8 @@ def review_case(settings: Settings, set_ref: str, case_id: str, reviewer: dict) 
         # disagreement. Rule outputs, registry-derived labels and model scores are never shown.
         "adjudication": {"needed": True, "earlier_reviews": prior} if may_adjudicate else None,
         "reviewed_by_you": reviewed,
+        # Sent back with the review: the server refuses it if the case changed meanwhile.
+        "your_role": "ADJUDICATOR" if may_adjudicate else "REVIEWER",
         "guidance": "Decide what kind of source most likely produced this heat: source identity "
         "only, never whether an accident happened. Only dated imagery near the episode (for "
         "example NASA Worldview true colour, Sentinel-2 or Landsat with its date) or an official "
@@ -1114,6 +1136,7 @@ def submit_review(settings: Settings, set_ref: str, payload: dict, reviewer: dic
     items = payload.get("evidence") or []
     subtype = payload.get("industrial_subtype")
     location = payload.get("source_location")
+    expected = payload.get("expected_role")
     notes = (payload.get("notes") or "").strip()[:2000]
     case_id = str(payload.get("case_id", ""))
     if label not in SOURCE_LABELS or certainty not in {"HIGH", "MEDIUM", "LOW"}:
@@ -1129,6 +1152,8 @@ def submit_review(settings: Settings, set_ref: str, payload: dict, reviewer: dic
         raise ValueError("unknown source location")
     if label != "UNRESOLVED" and location is None:
         raise ValueError("say where the source is relative to the pixel area")
+    if expected not in {"REVIEWER", "ADJUDICATOR"}:
+        raise ValueError("expected_role must be the role shown with the case")
     with database_engine(settings) as engine, engine.begin() as conn:
         # Re-read the account inside the transaction: a deactivation or a removed adjudicator
         # right that commits first is honoured (the row stays locked until this review commits).
@@ -1158,8 +1183,8 @@ def submit_review(settings: Settings, set_ref: str, payload: dict, reviewer: dic
         evidence = assess_evidence(items, case[1], case[2]) | {"source_location": location}
         existing = (
             conn.execute(
-                text("""SELECT reviewer,reviewer_id,role,source_label,certainty,evidence
-                    FROM label_reviews WHERE case_set_id=:s AND case_id=:id
+                text(f"""SELECT reviewer,reviewer_id,role,source_label,certainty,evidence
+                    FROM label_reviews r WHERE case_set_id=:s AND case_id=:id AND {COUNTED}
                     ORDER BY reviewed_at,id"""),
                 {"s": set_id, "id": case_id},
             )
@@ -1174,13 +1199,15 @@ def submit_review(settings: Settings, set_ref: str, payload: dict, reviewer: dic
         reviewers = [r for r in existing if r["role"] == "REVIEWER"]
         state = resolve_label([dict(r) for r in existing], case[0], None, None)
         if state["basis"] == "DISAGREEMENT_PENDING_ADJUDICATION":
-            if not account["can_adjudicate"]:
-                raise ValueError("this case is waiting for an adjudicator")
-            role = "ADJUDICATOR"
+            role = "ADJUDICATOR" if account["can_adjudicate"] else None
         elif len(reviewers) < case[0]:
             role = "REVIEWER"
         else:
-            raise ValueError("this case already has its reviews")
+            role = None
+        # A blind review never becomes an adjudication (or the reverse): if the case changed
+        # after it was opened, the same answer is given whatever changed, so it reveals nothing.
+        if role != expected:
+            raise CaseChanged("this case changed while you had it open; reload it")
         dated = sorted(i["observed_on"] for i in evidence["items"] if i["observed_on"])
         review_id = uuid4()
         conn.execute(
@@ -1242,13 +1269,15 @@ def label_summary(settings: Settings, set_ref: str) -> dict:
             .mappings()
             .one()
         )
-        total = conn.execute(
-            text("SELECT count(*) FROM label_reviews WHERE case_set_id=:s"), {"s": set_id}
-        ).scalar_one()
+        total, voided = conn.execute(
+            text(f"""SELECT count(*) FILTER (WHERE {COUNTED}),count(*) FILTER (WHERE NOT {COUNTED})
+                FROM label_reviews r WHERE case_set_id=:s"""),
+            {"s": set_id},
+        ).one()
         firsts = conn.execute(
-            text("""
+            text(f"""
             SELECT case_id,array_agg(source_label ORDER BY reviewed_at,id) AS labels
-            FROM label_reviews WHERE case_set_id=:s AND role='REVIEWER'
+            FROM label_reviews r WHERE case_set_id=:s AND role='REVIEWER' AND {COUNTED}
             GROUP BY case_id HAVING count(*) >= 2
         """),
             {"s": set_id},
@@ -1270,6 +1299,7 @@ def label_summary(settings: Settings, set_ref: str) -> dict:
         "tiers_by_split": {k: dict(v) for k, v in sorted(tiers.items())},
         "gold_test_labels": dict(gold_test),
         "reviews_total": total,
+        "reviews_voided": voided,
         "double_reviewed_cases": len(firsts),
         "binary_agreement_kappa": cohen_kappa(binary),
         "kappa_pairs": len(binary),

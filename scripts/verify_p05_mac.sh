@@ -4,12 +4,14 @@
 #   cd "<your ThermoScope checkout>" && bash local/p05-verify/verify_p05_mac.sh
 #
 # Expects local/p05-verify/branch.bundle and local/p05-verify/expected-sha.txt next to this
-# script. It never changes the main checkout's files or its database: it clones the checkout's
-# committed history into local/p05-verify/clone, adds the bundled branch, reuses the checkout's
-# pinned toolchains and caches, copies only the DATABASE_URL line of .env (never printed), and runs
-# make install, make install-ml, an XGBoost/OpenMP probe, make check and make integration (which
-# creates and drops its own disposable databases). Nothing is installed system-wide. The report is
-# written to local/p05-verify/report.txt with any configured secret redacted.
+# script. It never changes the main checkout's tracked files, uncommitted edits or database: it
+# clones the checkout's committed history into local/p05-verify/clone, adds the bundled branch,
+# reuses the checkout's pinned toolchains and download caches (new downloads may be added to the
+# ignored local/cache, or local/toolchains if a pinned runtime is missing), copies only the
+# DATABASE_URL line of .env (never printed), and runs make install, make install-ml, an
+# XGBoost/OpenMP probe, make check and make integration (which creates and drops its own
+# disposable databases). Nothing is installed system-wide. The report is written to
+# local/p05-verify/report.txt with configured secrets redacted, also if the run is interrupted.
 set -u
 MAIN="$(pwd)"
 HERE="$MAIN/local/p05-verify"
@@ -21,7 +23,38 @@ if [ ! -f "$MAIN/scripts/run.sh" ] || [ ! -f "$HERE/branch.bundle" ]; then
     exit 2
 fi
 EXPECTED="$(tr -d ' \n' < "$HERE/expected-sha.txt")"
-: > "$RAW"
+(umask 077; : > "$RAW")
+finish() { # redact configured secrets into report.txt and remove the raw log, whatever happened
+    [ -f "$RAW" ] || return 0
+    local py="$DEST/.venv/bin/python"
+    [ -x "$py" ] || py="$(ls "$MAIN"/local/toolchains/python/cpython-*/bin/python3 2>/dev/null | head -1)"
+    "$py" - "$MAIN/.env" "$RAW" "$REPORT" <<'PY'
+import re, sys
+env, raw, out = sys.argv[1:]
+text = open(raw, errors="replace").read()
+secrets = []
+try:
+    for line in open(env):
+        key, _, value = line.strip().partition("=")
+        value = value.split(" #")[0].strip().strip("\"'")
+        if key.endswith(("KEY", "PASSWORD", "TOKEN")) and len(value) >= 4:
+            secrets.append(value)
+        if key == "DATABASE_URL":
+            m = re.search(r"://[^:/@]+:([^@]+)@", value)
+            if m and len(m.group(1)) >= 4:
+                secrets.append(m.group(1))
+except FileNotFoundError:
+    pass
+for value in sorted(secrets, key=len, reverse=True):
+    text = text.replace(value, "[redacted]")
+text = re.sub(r"(postgres(?:ql)?[^\s:]*://[^:\s/@]+:)[^@\s]+@", r"\1[redacted]@", text)
+open(out, "w").write(text)
+print("Report written to local/p05-verify/report.txt; redacted", len(secrets), "configured value(s).")
+PY
+    rm -f "$RAW"
+}
+trap finish EXIT
+trap 'exit 130' INT TERM
 log() { printf '%s\n' "$*" | tee -a "$RAW"; }
 short() { case "$1" in "$HOME"*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac; }
 # macOS strips DYLD_* variables when a protected program (bash, env) starts, so the fallback is
@@ -131,31 +164,6 @@ grep -E '^-- ' "$RAW" > "$RAW.summary"
 tee -a "$RAW" < "$RAW.summary"; rm -f "$RAW.summary"
 log "xgboost loads with the project's settings: $XGB_OK${FALLBACK:+; loads with OpenMP from $(short "$FALLBACK")}"
 
-# Redact configured secrets before the report is shared (values are never printed).
-PY_BIN="$DEST/.venv/bin/python"
-[ -x "$PY_BIN" ] || PY_BIN="$(ls "$MAIN"/local/toolchains/python/cpython-*/bin/python3 2>/dev/null | head -1)"
-"$PY_BIN" - "$MAIN/.env" "$RAW" "$REPORT" <<'PY'
-import re, sys
-env, raw, out = sys.argv[1:]
-text = open(raw, errors="replace").read()
-secrets = []
-try:
-    for line in open(env):
-        key, _, value = line.strip().partition("=")
-        value = value.strip().strip("\"'")
-        if key.endswith(("KEY", "PASSWORD", "TOKEN")) and len(value) >= 6:
-            secrets.append(value)
-        if key == "DATABASE_URL":
-            m = re.search(r"://[^:/@]+:([^@]+)@", value)
-            if m and len(m.group(1)) >= 6:
-                secrets.append(m.group(1))
-except FileNotFoundError:
-    pass
-for value in secrets:
-    text = text.replace(value, "[redacted]")
-text = re.sub(r"(postgresql[^\s:]*://[^:\s/@]+:)[^@\s]+@", r"\1[redacted]@", text)
-open(out, "w").write(text)
-print("Report written to local/p05-verify/report.txt; redacted", len(secrets), "configured value(s).")
-PY
-rm -f "$RAW"
+finish
+trap - EXIT
 echo "Done. The report is ready; the clone in local/p05-verify/clone can be deleted later."

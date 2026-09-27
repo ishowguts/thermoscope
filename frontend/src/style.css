@@ -1002,6 +1002,9 @@ footer span {
 .review-workspace .panel-heading {
   gap: 10px;
 }
+.review-workspace .panel-heading button {
+  white-space: nowrap;
+}
 .queue-note {
   padding: 8px 14px 12px;
   margin: 0;

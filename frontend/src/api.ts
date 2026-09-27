@@ -111,6 +111,9 @@ export async function readAsReviewer<T>(
 
 export type Reviewer = { name: string; can_adjudicate: boolean };
 
+/** Thrown when the case changed after it was opened (someone else saved first). */
+export class CaseChanged extends Error {}
+
 export function utc(value: string | null | undefined): string {
   if (!value) return "Not available";
   return (
@@ -444,8 +447,10 @@ export type ReviewQueue = {
   queue_order: string;
   adjudication: QueueItem[];
   review: QueueItem[];
+  your_reviews: number;
   remaining_reviews: number;
-  remaining_adjudications: number;
+  /** Shown to adjudicators only. */
+  remaining_adjudications: number | null;
 };
 export type EarlierReview = {
   role: string;
@@ -501,6 +506,7 @@ export type ReviewCase = {
   blind: boolean;
   reviews_recorded: number;
   reviewed_by_you: boolean;
+  your_role: "REVIEWER" | "ADJUDICATOR";
   adjudication: { needed: boolean; earlier_reviews: EarlierReview[] } | null;
   guidance: string;
   evidence_policy: {
@@ -559,6 +565,8 @@ export async function postReview(
   if (!response.ok) {
     if (response.status === 401)
       throw new SignInRequired("Your reviewer sign-in was not accepted.");
+    if (response.status === 409 && payload.code === "CASE_CHANGED")
+      throw new CaseChanged(payload.message);
     if (response.status === 422 && payload.code === "INVALID_QUERY")
       throw new Error(
         "Check the links, types, dates and notes, then try again.",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
   SOURCE_LABEL_TEXT,
@@ -8,6 +8,7 @@ import {
   facilityType,
   landCoverMix,
   measurement,
+  CaseChanged,
   SignInRequired,
   postReview,
   readApi,
@@ -16,7 +17,6 @@ import {
 } from "./api";
 import type {
   CaseSet,
-  LabelSummary,
   QueueItem,
   ReviewCase,
   ReviewQueue,
@@ -337,18 +337,26 @@ function ReviewForm({
   data,
   reviewer,
   token,
+  initial,
+  onDraft,
   onSaved,
-  onSignedOut,
+  onStale,
 }: {
   data: ReviewCase;
   reviewer: Reviewer;
   token: string;
+  initial: Draft | undefined;
+  onDraft: (draft: Draft | null) => void;
   onSaved: (message: string) => void;
-  onSignedOut: () => void;
+  onStale: () => void;
 }) {
-  const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
+  const [draft, setDraftState] = useState<Draft>(initial ?? EMPTY_DRAFT);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const setDraft = (next: Draft) => {
+    setDraftState(next);
+    onDraft(next);
+  };
   const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
   const rows = draft.evidence.filter((row) => row.url.trim() !== "");
   const setRow = (index: number, patch: Partial<EvidenceRow>) => {
@@ -396,6 +404,7 @@ function ReviewForm({
     try {
       const saved = await postReview(data.case_set_id, token, {
         case_id: data.case_id,
+        expected_role: data.your_role,
         source_label: draft.source_label,
         industrial_subtype:
           draft.source_label === "INDUSTRIAL" && draft.industrial_subtype
@@ -414,7 +423,8 @@ function ReviewForm({
         })),
         notes: draft.notes.trim() || null,
       });
-      setDraft(EMPTY_DRAFT);
+      setDraftState(EMPTY_DRAFT);
+      onDraft(null);
       const tier =
         saved.review_tier === "GOLD-eligible"
           ? "It can count towards test truth."
@@ -425,7 +435,11 @@ function ReviewForm({
           : "Review saved. The next case is open. ") + tier,
       );
     } catch (reason) {
-      if (reason instanceof SignInRequired) onSignedOut();
+      if (reason instanceof CaseChanged) onStale();
+      else if (reason instanceof SignInRequired)
+        setError(
+          "Your sign-in is no longer valid (token rotated or account deactivated). Nothing was saved; your draft stays on this page until you sign out.",
+        );
       else setError((reason as Error).message);
     } finally {
       setSaving(false);
@@ -595,8 +609,11 @@ export function ReviewPage() {
   const [reviewer, setReviewer] = useState<Reviewer | null>(null);
   const [signingIn, setSigningIn] = useState(false);
   const [queue, setQueue] = useState<ReviewQueue | null>(null);
-  const [summary, setSummary] = useState<LabelSummary | null>(null);
   const [caseId, setCaseId] = useState<string | null>(null);
+  const [caseTick, setCaseTick] = useState(0);
+  // Unsaved drafts per case, kept while switching cases or after a reload; cleared on sign-out.
+  const drafts = useRef<Record<string, Draft>>({});
+  const keepCase = useRef<string | null>(null);
   const [data, setData] = useState<ReviewCase | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -628,6 +645,7 @@ export function ReviewPage() {
     setData(null);
     setMessage("");
     setError(reason);
+    drafts.current = {};
     try {
       sessionStorage.removeItem(TOKEN_KEY);
     } catch {
@@ -661,6 +679,13 @@ export function ReviewPage() {
         }
       }
     } catch (reason) {
+      if (!remember) {
+        try {
+          sessionStorage.removeItem(TOKEN_KEY); // a stored token that no longer works
+        } catch {
+          /* storage unavailable: nothing to clear */
+        }
+      }
       setError(
         reason instanceof SignInRequired
           ? "That token was not accepted. Use the personal token the project owner gave you."
@@ -685,19 +710,18 @@ export function ReviewPage() {
     if (!setName || !reviewer || !token) return;
     const controller = new AbortController();
     const base = `/api/v1/annotation/${encodeURIComponent(setName)}`;
-    Promise.all([
-      readAsReviewer<ReviewQueue>(
-        `${base}/queue?limit=30`,
-        token,
-        controller.signal,
-      ),
-      readApi<LabelSummary>(`${base}/summary`, controller.signal),
-    ])
-      .then(([q, s]) => {
+    readAsReviewer<ReviewQueue>(
+      `${base}/queue?limit=30`,
+      token,
+      controller.signal,
+    )
+      .then((q) => {
         setQueue(q);
-        setSummary(s);
-        const first = q.adjudication[0] ?? q.review[0];
-        setCaseId(first ? first.case_id : null);
+        const items = [...q.adjudication, ...q.review];
+        const keep = keepCase.current;
+        keepCase.current = null;
+        if (keep && items.some((i) => i.case_id === keep)) setCaseId(keep);
+        else setCaseId(items[0] ? items[0].case_id : null);
       })
       .catch((reason) => {
         if (controller.signal.aborted) return;
@@ -723,19 +747,23 @@ export function ReviewPage() {
         else setError("This case could not be loaded.");
       });
     return () => controller.abort();
-  }, [caseId, setName, token, expired]);
+  }, [caseId, caseTick, setName, token, expired]);
 
   const saved = useCallback((text: string) => {
     setMessage(text);
     setTick((v) => v + 1);
   }, []);
 
-  const gold = summary?.gold_test_labels ?? {};
-  const industrial = gold.INDUSTRIAL ?? 0;
-  const other =
-    (gold.VEGETATION_FIRE ?? 0) +
-    (gold.AGRICULTURAL_BURN ?? 0) +
-    (gold.OTHER ?? 0);
+  // Someone else saved this case first: reload the queue and the case, keeping this case open
+  // (with the draft) if it still needs this reviewer.
+  const stale = useCallback(() => {
+    keepCase.current = caseId;
+    setMessage(
+      "This case changed while you had it open (someone else saved first), so nothing was saved. It has been reloaded; check it again before saving.",
+    );
+    setTick((v) => v + 1);
+    setCaseTick((v) => v + 1);
+  }, [caseId]);
 
   return (
     <>
@@ -814,32 +842,34 @@ export function ReviewPage() {
         </form>
       ) : (
         <>
-          <section className="metrics" aria-label="Label progress">
+          <section className="metrics" aria-label="Your progress">
             <div>
-              <span>Reviewed test labels (industrial / not)</span>
-              <strong>
-                {industrial} / {other}
-              </strong>
-              <small>10 of each to report results, 30 to promote a model</small>
+              <span>Your reviews in this set</span>
+              <strong>{queue?.your_reviews ?? "—"}</strong>
+              <small>Saved under your account</small>
             </div>
             <div>
-              <span>Reviews saved · awaiting adjudication</span>
+              <span>Cases open for review</span>
               <strong>
-                {summary?.reviews_total ?? "—"} ·{" "}
-                {summary?.pending_adjudication ?? "—"}
+                {queue?.remaining_reviews.toLocaleString("en-GB") ?? "—"}
               </strong>
-              <small>Across all reviewers</small>
+              <small>Test cases need two people</small>
             </div>
             <div>
-              <span>Reviewer agreement (industrial vs not)</span>
+              <span>
+                {reviewer.can_adjudicate
+                  ? "Disagreements to adjudicate"
+                  : "Label totals and agreement"}
+              </span>
               <strong>
-                {summary?.binary_agreement_kappa == null
-                  ? "—"
-                  : summary.binary_agreement_kappa.toFixed(2)}
+                {reviewer.can_adjudicate
+                  ? (queue?.remaining_adjudications ?? "—")
+                  : "Hidden"}
               </strong>
               <small>
-                Cohen’s kappa over {summary?.kappa_pairs ?? 0} double-reviewed
-                case(s) where both reviewers decided
+                {reviewer.can_adjudicate
+                  ? "On cases you did not review"
+                  : "Shown to the project owner only, so they cannot hint whether reviewers agreed"}
               </small>
             </div>
           </section>
@@ -890,7 +920,7 @@ export function ReviewPage() {
               </div>
               <p className="help queue-note">
                 {queue
-                  ? `${queue.remaining_reviews.toLocaleString("en-GB")} cases open for review · ${queue.remaining_adjudications} awaiting adjudication${queue.can_adjudicate ? "" : " (by an adjudicator)"}. Test cases need two people.`
+                  ? `${queue.remaining_reviews.toLocaleString("en-GB")} cases open for review. Test cases need two people.`
                   : "Loading queue…"}
               </p>
             </div>
@@ -910,8 +940,13 @@ export function ReviewPage() {
                   data={data}
                   reviewer={reviewer}
                   token={token}
+                  initial={drafts.current[data.case_id]}
+                  onDraft={(draft) => {
+                    if (draft) drafts.current[data.case_id] = draft;
+                    else delete drafts.current[data.case_id];
+                  }}
                   onSaved={saved}
-                  onSignedOut={expired}
+                  onStale={stale}
                 />
               </div>
             )}

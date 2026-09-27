@@ -52,6 +52,7 @@ from thermoscope.labels import (
     superseded_by,
 )
 from thermoscope.landcover import observation_landcover
+from thermoscope.regions import NOAA20_PRODUCTS
 
 MODEL_VERSION = "xgb-source-binary-v4"
 # history-eligibility-v1 (ADR-021): only cases whose whole 90-day history window was retrieved
@@ -241,7 +242,37 @@ def landcover_features(land: dict | None) -> dict:
     }
 
 
-def compute_case_features(settings: Settings, set_ref: str) -> dict:
+def history_archive_gaps(conn, set_id, mode: DataMode) -> tuple[int, list[dict]]:
+    """Regions whose saved NOAA-20 archive does not reach back the full history window before
+    their first case. Feature rows are immutable, so computing them before the archive is imported
+    would fix truncated history under the version name (ADR-022)."""
+    rows = conn.execute(
+        text("""
+        WITH first AS (
+            SELECT DISTINCT ON (region_id) region_id,started_at,geom FROM label_cases
+            WHERE case_set_id=:s ORDER BY region_id,started_at)
+        SELECT f.region_id,f.started_at::date AS first_case,
+            (SELECT min(r.start_date) FROM ingestion_runs r
+             WHERE r.data_mode=:mode AND r.product = ANY(:family) AND r.status='SUCCEEDED'
+                AND ST_Covers(r.bounds,f.geom)) AS archive_from
+        FROM first f ORDER BY f.region_id
+    """),
+        {"s": set_id, "mode": mode.value, "family": list(NOAA20_PRODUCTS)},
+    ).mappings()
+    gaps = []
+    checked = 0
+    for r in rows:
+        checked += 1
+        needed = r["first_case"] - timedelta(days=BASELINE_WINDOW)
+        if r["archive_from"] is None or r["archive_from"] > needed:
+            gaps.append({"region_id": r["region_id"], "needed_from": str(needed),
+                         "archive_from": str(r["archive_from"])})  # fmt: skip
+    return checked, gaps
+
+
+def compute_case_features(
+    settings: Settings, set_ref: str, *, allow_partial_history: bool = False
+) -> dict:
     written = weak = silver = unchanged = complete = 0
     with batch_engine(settings) as engine, engine.begin() as conn:
         set_id = case_set_id(conn, set_ref)
@@ -250,6 +281,13 @@ def compute_case_features(settings: Settings, set_ref: str) -> dict:
                 text("SELECT data_mode FROM case_sets WHERE id=:s"), {"s": set_id}
             ).scalar_one()
         )
+        checked, gaps = history_archive_gaps(conn, set_id, mode)
+        if gaps and not allow_partial_history:
+            raise ValueError(
+                f"HISTORY_ARCHIVE_INCOMPLETE: {len(gaps)} of {checked} region(s) lack NOAA-20 "
+                f"history from {gaps[0]['needed_from']} ({gaps[0]['region_id']} first); import "
+                "the saved archive first, or pass --allow-partial-history"
+            )
         cases = (
             conn.execute(
                 text("""
@@ -368,7 +406,9 @@ def compute_case_features(settings: Settings, set_ref: str) -> dict:
             complete += features["history_complete"]
     return {"case_set_id": str(set_id), "feature_version": FEATURE_VERSION, "cases": written,
             "unchanged": unchanged, "weak_labels": weak, "silver_labels": silver,
-            "history_complete": complete}  # fmt: skip
+            "history_complete": complete,
+            "history_archive": {"regions_checked": checked, "regions_short": gaps,
+                                "partial_allowed": allow_partial_history}}  # fmt: skip
 
 
 # ---------------------------------------------------------------------------------------------
@@ -980,11 +1020,13 @@ def model_card(report: dict) -> str:
                   "metrics.json only to confirm the pipeline executes.", ""]  # fmt: skip
     else:
         lines += ["## Results", "", "No evaluation: not enough reviewed labels.", ""]
+    set_aside = sum(report.get("history_policy", {}).get("cases_excluded_by_split", {}).values())
     lines += [
         "## Limitations",
-        "- Pilot regions in India only; March–September 2026; NOAA-20 VIIRS only. Episodes "
-        "before about late June lack a complete 90-day history and are excluded until the SP "
-        "archive is extended back to 30 December 2025.",
+        "- Pilot regions in India only; March–September 2026; NOAA-20 VIIRS only. Cases whose "
+        "90-day history was less than 80 % retrieved are set aside, never imputed "
+        f"({set_aside} here; with the "
+        "SP archive from 30 December 2025 these are cases near a region edge).",
         "- OSM is incomplete and dated after most observations (retrospective context).",
         "- WorldCover is from 2021; land use may have changed.",
         "- Thresholds for abstention are chosen on validation data and are not a guarantee.",
