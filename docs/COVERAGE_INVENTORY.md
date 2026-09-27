@@ -36,3 +36,28 @@ These are observations, not 13 fires, independent events or labelled examples. N
 Facility identity alone does not label a hotspot or confirm an industrial accident. OSM/rule outputs may propose weak training labels but cannot independently validate a model using those same features. No gold labels exist in this inventory.
 
 P02 ingested all three hashed samples into the application. Jamnagar reimport inserted zero new observations; the 26 September 21:53 UTC provider fetch returned the same ten observations and created distinct live receipts. The database contains 13 unique real observations, not a training/evaluation dataset. Original collection units and unknown historical availability remain visible. Region/date expansion must follow coverage rather than a desired class balance invented in code. Historical data and independent labels remain prerequisites for P04/P05.
+
+## P03 context inventory — 27 September 2026 IST
+
+OSM snapshots, retrieved with the adapter's exact query text (curl POST from the bridge shell, then imported with `import-osm` and the recorded retrieval time). Raw files are in ignored `local/context-fetch/` on the owner's Mac with `.meta.json` sidecars.
+
+| Region | Query SHA-256 | Response SHA-256 | OSM base (UTC) | Retrieved (UTC) | Elements accepted |
+|---|---|---|---|---|---:|
+| Jamnagar | `c2b34d81f39cd0bfd413d36d59eee02561cd34c2b03d4b217145ccef07d7123b` | `f2a94cfd47f3f2e3068afde6bf1faa1cfb632cfc1bb2d9b748d5a8303fe9c2a7` | 2026-09-26 22:38:51 | 22:41:00 | 313 of 313 |
+| Singrauli | `e9a7d1b052fe1cd7d3cd9fbbc17cacc105f524d2512e2cac549eaba96653a792` | `8567c9c7366d39b978f9774e6b0b0fd9d3894647a22d7e91ba69ded28969d6ff` | 2026-09-26 22:39:54 | 22:41:14 | 208 of 208 |
+| Punjab | `d70af6dcc24cafc8d95588c18c89dbfe2fa00faf17fb041c921b4a105eefaf1f` | `d2197995cbfdfa364d154b74173374529527de4260c34ae9122d53586a3caaf1` | 2026-09-26 22:39:54 | 22:41:20 | 126 of 126 |
+
+WorldCover tiles read: N21E069 (Jamnagar), N24E081 (Singrauli), N30E072 and N30E075 (Punjab). All 13 support windows were 100% valid.
+
+What the context says about the 13 real observations (context, not labels):
+
+| Group | Observations | Mapped context in the pixel area | Land cover in the pixel area (2021) |
+|---|---:|---|---|
+| Jamnagar, Reliance refinery | 3 | Inside the mapped refinery polygon; chimneys within 170–330 m; one has a flare 750 m away | 96% built-up (two); 38% built-up / 35% shrub (one) |
+| Jamnagar, around a mapped power plant at ~22.934 N, 69.698 E | 7 | 3 have a thin mapped power-plant polygon inside the circle (270–440 m); 4 have it only nearby (610–770 m) | Mixed: cropland 14–43%, built-up 15–30%, with grass, bare ground or trees |
+| Singrauli | 1 | Jhingurdah Mine polygon 122 m away (inside circle) | Tree 49%, grass 32%, bare 17% |
+| Punjab | 2 | No mapped industrial feature within 2 km | Cropland 99% and 71% |
+
+The Jamnagar power-plant group mixes cropland and a mapped industrial feature at the edge of the pixel area. It is the only candidate for the P03 "adjacent industrial/agricultural hard case" and has **not** been reviewed by a person; its source remains unknown.
+
+Events (`event-site-v1`, historical replay): Jamnagar 10 observations → 5 events at 3 recurring sites (the power-plant group splits into two events at a 25 h gap: 2 observations 22–23 September, 5 observations over 3 overpasses 24–25 September); Singrauli 1 event; Punjab 2 events at 2 sites.

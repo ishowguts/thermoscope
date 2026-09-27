@@ -6,9 +6,10 @@ import {
   setWorkerUrl,
 } from "maplibre-gl";
 import type { GeoJSONSource } from "maplibre-gl";
+import type { FeatureCollection, Polygon } from "geojson";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { Observation } from "./api";
+import type { FacilityCollection, Observation } from "./api";
 
 setWorkerUrl(workerUrl);
 
@@ -17,9 +18,23 @@ type Props = {
   bounds: [number, number, number, number];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  facilities: FacilityCollection | null;
+  support: Polygon | null;
 };
 
-export function MapView({ features, bounds, selectedId, onSelect }: Props) {
+const EMPTY: FeatureCollection = {
+  type: "FeatureCollection",
+  features: [],
+};
+
+export function MapView({
+  features,
+  bounds,
+  selectedId,
+  onSelect,
+  facilities,
+  support,
+}: Props) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<Map | null>(null);
   const select = useRef(onSelect);
@@ -61,6 +76,8 @@ export function MapView({ features, bounds, selectedId, onSelect }: Props) {
               type: "geojson",
               data: { type: "FeatureCollection", features: [] },
             },
+            facilities: { type: "geojson", data: EMPTY },
+            support: { type: "geojson", data: EMPTY },
           },
           layers: [
             {
@@ -73,6 +90,48 @@ export function MapView({ features, bounds, selectedId, onSelect }: Props) {
               type: "raster",
               source: "osm",
               paint: { "raster-saturation": -0.45, "raster-opacity": 0.86 },
+            },
+            {
+              id: "facility-areas",
+              type: "fill",
+              source: "facilities",
+              filter: ["!=", ["geometry-type"], "Point"],
+              paint: { "fill-color": "#5b4b8a", "fill-opacity": 0.16 },
+            },
+            {
+              id: "facility-outlines",
+              type: "line",
+              source: "facilities",
+              filter: ["!=", ["geometry-type"], "Point"],
+              paint: { "line-color": "#5b4b8a", "line-width": 1.2 },
+            },
+            {
+              id: "facility-points",
+              type: "circle",
+              source: "facilities",
+              filter: ["==", ["geometry-type"], "Point"],
+              paint: {
+                "circle-radius": 3,
+                "circle-color": "#5b4b8a",
+                "circle-stroke-color": "#fff",
+                "circle-stroke-width": 1,
+              },
+            },
+            {
+              id: "support-fill",
+              type: "fill",
+              source: "support",
+              paint: { "fill-color": "#143e39", "fill-opacity": 0.08 },
+            },
+            {
+              id: "support-line",
+              type: "line",
+              source: "support",
+              paint: {
+                "line-color": "#143e39",
+                "line-width": 2,
+                "line-dasharray": [2, 2],
+              },
             },
             {
               id: "observations",
@@ -153,6 +212,38 @@ export function MapView({ features, bounds, selectedId, onSelect }: Props) {
   }, [ready, features, bounds]);
 
   useEffect(() => {
+    if (!ready || !map.current) return;
+    (map.current.getSource("facilities") as GeoJSONSource).setData(
+      facilities ?? EMPTY,
+    );
+  }, [ready, facilities]);
+
+  useEffect(() => {
+    if (!ready || !map.current) return;
+    (map.current.getSource("support") as GeoJSONSource).setData(
+      support
+        ? {
+            type: "FeatureCollection",
+            features: [{ type: "Feature", geometry: support, properties: {} }],
+          }
+        : EMPTY,
+    );
+    if (support) {
+      const ring = support.coordinates[0];
+      const lons = ring.map((point) => point[0]);
+      const lats = ring.map((point) => point[1]);
+      // Zoom to the selected pixel area so its facilities can be inspected.
+      map.current.fitBounds(
+        [
+          [Math.min(...lons), Math.min(...lats)],
+          [Math.max(...lons), Math.max(...lats)],
+        ],
+        { padding: 70, maxZoom: 14, duration: 400 },
+      );
+    }
+  }, [ready, support]);
+
+  useEffect(() => {
     if (ready)
       map.current?.setFilter("selected", [
         "==",
@@ -182,7 +273,16 @@ export function MapView({ features, bounds, selectedId, onSelect }: Props) {
       )}
       {!ready && !unavailable && <div className="map-notice">Loading map…</div>}
       <div className="map-legend">
-        <span /> Satellite pixel centre · not a fire boundary
+        <div>
+          <span /> Satellite pixel centre · not a fire boundary
+        </div>
+        <div>
+          <i className="legend-support" /> Approximate pixel area (selected)
+        </div>
+        <div>
+          <i className="legend-facility" /> Mapped OSM industrial feature · not
+          a confirmed source
+        </div>
       </div>
     </div>
   );

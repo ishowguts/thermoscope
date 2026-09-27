@@ -7,8 +7,24 @@ import {
   useState,
 } from "react";
 import { createRoot } from "react-dom/client";
-import { confidence, measurement, readApi, utc } from "./api";
-import type { Catalog, DataMode, Observation, ObservationPage } from "./api";
+import {
+  associationSummary,
+  confidence,
+  distance,
+  facilityType,
+  landCoverMix,
+  measurement,
+  readApi,
+  utc,
+} from "./api";
+import type {
+  Catalog,
+  DataMode,
+  FacilityCollection,
+  Observation,
+  ObservationContext,
+  ObservationPage,
+} from "./api";
 const MapView = lazy(() =>
   import("./MapView").then((module) => ({ default: module.MapView })),
 );
@@ -21,7 +37,161 @@ type Query = {
   offset: number;
 };
 
-function Evidence({ observation }: { observation: Observation | undefined }) {
+function overlap(fraction: number | null): string {
+  if (fraction == null) return "";
+  if (fraction > 0 && fraction < 0.01) return " · covers under 1% of it";
+  return ` · covers ${Math.round(fraction * 100)}% of it`;
+}
+
+function Context({
+  context,
+  failed,
+}: {
+  context: ObservationContext | null;
+  failed: boolean;
+}) {
+  if (failed)
+    return (
+      <section className="context" aria-label="Mapped context">
+        <h3>Mapped context</h3>
+        <p className="help">
+          Context could not be loaded. The observation itself is unaffected.
+        </p>
+      </section>
+    );
+  if (!context)
+    return (
+      <section className="context" aria-label="Mapped context">
+        <h3>Mapped context</h3>
+        <p className="help">Loading mapped context…</p>
+      </section>
+    );
+  const a = context.association;
+  const snapshot = context.facility_snapshot;
+  const s = context.support_region;
+  const event = context.event;
+  const land = context.land_cover;
+  return (
+    <section className="context" aria-label="Mapped context">
+      <div className="context-grid">
+        <div>
+          <h3>Mapped facilities near this pixel</h3>
+          <p className="context-status">{associationSummary(context)}</p>
+          {context.context_timing === "RETROSPECTIVE" && snapshot && (
+            <p className="retrospective">
+              Retrospective context: this map data is from{" "}
+              {utc(snapshot.osm_base_at)}, after the satellite observation.
+              Facilities may have been added or changed since.
+            </p>
+          )}
+          {a.candidates.length > 0 && (
+            <ul className="candidates">
+              {a.candidates.slice(0, 6).map((c) => (
+                <li
+                  key={`${c.osm_type}/${c.osm_id}`}
+                  className={c.relation === "INSIDE_SUPPORT" ? "inside" : ""}
+                >
+                  <span>
+                    <strong>{facilityType(c.facility_type)}</strong>
+                    {c.name ? ` · ${c.name}` : ""}
+                  </span>
+                  <span className="where">
+                    {c.contains_pixel_centre
+                      ? "Pixel centre inside"
+                      : distance(c.distance_m)}
+                  </span>
+                  <small>
+                    {c.relation === "INSIDE_SUPPORT"
+                      ? "Inside approximate pixel area"
+                      : "Nearby, outside pixel area"}
+                    {overlap(c.support_overlap_fraction)} · OSM {c.primary_tag}{" "}
+                    ·{" "}
+                    <a href={c.osm_url} target="_blank" rel="noreferrer">
+                      {c.osm_type}/{c.osm_id}
+                    </a>
+                  </small>
+                </li>
+              ))}
+            </ul>
+          )}
+          {a.candidates.length > 6 && (
+            <p className="help">
+              {a.candidates.length - 6} more mapped feature(s) within{" "}
+              {distance(a.context_radius_m)}.
+            </p>
+          )}
+          <p className="help">{a.note}</p>
+        </div>
+        <div>
+          <h3>Approximate pixel area</h3>
+          <dl>
+            <dt>Radius</dt>
+            <dd>
+              {distance(s.radius_m)} ·{" "}
+              {s.basis === "SCAN_TRACK"
+                ? "from scan/track size"
+                : "nominal pixel size"}{" "}
+              + {distance(s.geolocation_buffer_m)} location buffer
+            </dd>
+            <dt>Map data</dt>
+            <dd>
+              {snapshot
+                ? `OpenStreetMap as of ${utc(snapshot.osm_base_at)}`
+                : "No snapshot for this location"}
+            </dd>
+            <dt>Land cover in area</dt>
+            <dd>
+              {land
+                ? land.status === "OK"
+                  ? landCoverMix(land.support)
+                  : `Too few valid pixels (${Math.round(land.support.valid_fraction * 100)}% valid)`
+                : "Not extracted yet"}
+            </dd>
+            <dt>Within 1 km</dt>
+            <dd>{land ? landCoverMix(land.context) : "—"}</dd>
+            <dt>Land-cover date</dt>
+            <dd>
+              {land
+                ? `ESA WorldCover ${land.map_year} (${land.age_years_at_observation} years before this observation)`
+                : "—"}
+            </dd>
+            <dt>Event</dt>
+            <dd>
+              {event
+                ? `${event.observation_count} observation(s) over ${event.overpass_count} overpass(es), ${utc(event.started_at)} – ${utc(event.ended_at)}`
+                : "Not grouped yet"}
+            </dd>
+            <dt>Recurring site</dt>
+            <dd>
+              {event
+                ? `${event.site.event_count} event(s) here since ${utc(event.site.first_seen_at)}`
+                : "—"}
+            </dd>
+          </dl>
+          <p className="help">
+            {s.note} {context.event_note}
+          </p>
+          {land && (
+            <p className="help">
+              {land.note} {land.accuracy_note}. {land.attribution} (
+              {land.license}).
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Evidence({
+  observation,
+  context,
+  contextFailed,
+}: {
+  observation: Observation | undefined;
+  context: ObservationContext | null;
+  contextFailed: boolean;
+}) {
   if (!observation)
     return (
       <section className="evidence empty-selection">
@@ -95,6 +265,7 @@ function Evidence({ observation }: { observation: Observation | undefined }) {
           </dl>
         </div>
       </div>
+      <Context context={context} failed={contextFailed} />
       <details>
         <summary>Source receipt and integrity hash</summary>
         <dl className="receipt">
@@ -124,6 +295,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
   const [showMap, setShowMap] = useState(true);
+  const [facilities, setFacilities] = useState<FacilityCollection | null>(null);
+  const [context, setContext] = useState<ObservationContext | null>(null);
+  const [contextFailed, setContextFailed] = useState(false);
   const select = useCallback((id: string) => setSelectedId(id), []);
 
   useEffect(() => {
@@ -207,6 +381,49 @@ function App() {
       clearTimeout(timer);
     };
   }, [query, mode, catalog]);
+
+  useEffect(() => {
+    if (!query) return;
+    const controller = new AbortController();
+    let active = true;
+    setFacilities(null);
+    readApi<FacilityCollection>(
+      `/api/v1/map/facilities.geojson?${new URLSearchParams({ bbox: query.bbox, data_mode: mode })}`,
+      controller.signal,
+    )
+      .then((result) => {
+        if (active) setFacilities(result);
+      })
+      .catch(() => {
+        if (active) setFacilities(null);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [query?.bbox, mode]);
+
+  useEffect(() => {
+    setContext(null);
+    setContextFailed(false);
+    if (!selectedId) return;
+    const controller = new AbortController();
+    let active = true;
+    readApi<ObservationContext>(
+      `/api/v1/observations/${selectedId}/context?data_mode=${mode}`,
+      controller.signal,
+    )
+      .then((result) => {
+        if (active) setContext(result);
+      })
+      .catch(() => {
+        if (active) setContextFailed(true);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [selectedId, mode]);
 
   const region = catalog?.regions.find((item) => item.id === regionId);
   const latestRun = page?.meta.latest_run;
@@ -395,6 +612,12 @@ function App() {
                   bounds={page.meta.bbox}
                   selectedId={selectedId}
                   onSelect={select}
+                  facilities={facilities}
+                  support={
+                    context?.observation_id === selectedId
+                      ? context.support_region.geometry
+                      : null
+                  }
                 />
               </Suspense>
             ) : (
@@ -413,7 +636,12 @@ function App() {
               >
                 NASA FIRMS
               </a>{" "}
-              · {page?.features.length ?? 0} points on this page ·{" "}
+              · {page?.features.length ?? 0} points on this page · Facility
+              context © OpenStreetMap contributors (ODbL)
+              {facilities?.meta.snapshots[0]
+                ? `, as of ${utc(facilities.meta.snapshots[0].osm_base_at)}`
+                : " unavailable"}{" "}
+              ·{" "}
               <a
                 href="https://www.openstreetmap.org/fixthemap"
                 target="_blank"
@@ -499,10 +727,15 @@ function App() {
             )}
           </div>
         </section>
-        <Evidence observation={selected} />
+        <Evidence
+          observation={selected}
+          context={context?.observation_id === selectedId ? context : null}
+          contextFailed={contextFailed}
+        />
         <footer>
           <p>
-            Observations are unclassified. No trained model or
+            Observations are unclassified. Mapped facilities and event grouping
+            are context, not a source classification. No trained model or
             industrial-incident confirmation is available.
           </p>
           <span>ThermoScope · Git_Push_Pray</span>

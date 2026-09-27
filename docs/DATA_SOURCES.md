@@ -24,3 +24,12 @@ Application code licensing remains a team decision. It does not replace any sour
 ## P02 online basemap use
 
 MapLibre uses `https://tile.openstreetmap.org/{z}/{x}/{y}.png` with visible OpenStreetMap contributor attribution. Normal browser caching and referrer behavior are retained; no tile prefetch, offline export or proxy that hides the client is introduced. Small interactive local testing was performed. `VITE_TILE_URL` and `VITE_TILE_ATTRIBUTION` can select a permitted alternative at build time. A public deployment needs a provider/capacity decision; the OSM service has no promised SLA. The observation list works without map rendering, but the current raster basemap still needs network access.
+
+## P03 context sources — 27 September 2026 IST
+
+| Source | Exact use | Terms and handling |
+|---|---|---|
+| OpenStreetMap via Overpass API (`overpass-api.de`, fallback `maps.mail.ru` mirror) | One fixed query per pilot region (`osm-industrial-v1`), stored as immutable raw JSON with query hash, OSM base time and retrieval time | [ODbL 1.0](https://www.openstreetmap.org/copyright); attribution "© OpenStreetMap contributors" is shown beside the map and in every context response. The raw responses include OSM usernames from `out meta`; only element IDs, versions, timestamps, tags and geometry are copied into the database. Extracts stay in ignored `local/objects`; sharing a derived database publicly needs a separate ODbL share-alike review. |
+| ESA WorldCover 10 m 2021 v200 (`esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/`) | Bounded windows around each observation; class fractions and small GeoTIFF chips in ignored `local/objects` | CC BY 4.0, published 28 October 2022, DOI [10.5281/zenodo.7254221](https://zenodo.org/records/7254221). Required map attribution: "© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium". Legend and nodata value confirmed from the [product user manual](https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/docs/WorldCover_PUM_V2.0.pdf) (SHA-256 `4301a3d95260d88bd4315f43ccf2a12ef74ad391109b9f36e22b6e51d8490107`) and the file itself (EPSG:4326, uint8, nodata 0). |
+
+Neither source labels a heat source. OSM tags propose what a mapped feature is; WorldCover 2021 describes surroundings five years before the pilot observations.
