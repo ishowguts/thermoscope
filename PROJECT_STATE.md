@@ -1,6 +1,6 @@
 # Project state
 
-Checkpoint: 27 September 2026, the integrator P05 coordination audit after completed P03/P04 integration. Read the internal handoff log first. Canonical workspace: `thermoscope`; private remote: https://github.com/ishowguts/thermoscope; branch `main`. Main and origin/main were clean and equal at `8adef15` before this documentation-only update; the previous push/conflict issue is resolved.
+Checkpoint: 28 September 2026, the integrator submission package prepared and visually verified. Read the internal handoff log first. Canonical workspace: `thermoscope`; private remote: https://github.com/ishowguts/thermoscope; branch `main`. Main and origin/main were clean and equal at `52c91f0` before this documentation-only update; the previous push/conflict issue is resolved. Application code and P05 are unchanged by this checkpoint.
 
 ## Milestone status
 
@@ -10,7 +10,7 @@ Checkpoint: 27 September 2026, the integrator P05 coordination audit after compl
 | P02 observations/storage/API/map | Complete; original 13 records and receipts preserved |
 | P03 OSM, WorldCover, events/sites | Technically integrated and Mac-verified; full gate still needs independent human case review |
 | P04 history and rules | Technically integrated and Mac-verified; uncalibrated heuristics, no learned model |
-| P05 labels/model pipeline | branch `p05-model` at `579aaf3`; latest branch CI passed; needs reconciliation with reviewed main, independent acceptance, Mac verification and human evidence |
+| P05 labels/model pipeline | New reconciliation handoff at `a243d29` fetched on 28 September; reviewed main is an ancestor. The integrator code/data acceptance, fresh CI confirmation, Mac verification and human evidence remain pending |
 | P06–P08 | Not implemented on main |
 
 P03/P04 integration preserves the author commits. Review fixes: `329b716`; P03 merge: `3cd8893`; reviewed P04 merge: `53e56ba`; newer P05 handoff preserved in integration commit `b87fa86`. Five evidence defects were corrected with six regression cases: missing-history abstention, valid per-product coverage, OSM boundary coverage, adequate raster windows, and solar-source handling. Details: internal record P03-P04-REVIEW, ADR-020.
@@ -28,22 +28,24 @@ P03/P04 integration preserves the author commits. Review fixes: `329b716`; P03 m
 
 ## The newer P05 work
 
+**28 September refresh:** `origin/p05-model` advanced to `a243d29`. Git ancestry confirms main `52c91f0` is included. The new handoff reports evidence-policy, facility-grouping, history eligibility, held-out-region and review-integrity work, migration 0007, 146 unit/API and 18 integration checks, with zero real reviews. Only the ref, history and handoff were inspected during submission preparation; this is not independent acceptance or confirmation of the new CI. The older audit below describes `579aaf3` and its gaps at that time. Inspect the newer branch's result section before repeating work.
+
 The branch records 464 additional FIRMS files, 14 regions, SP history, WRI registry evidence, a frozen 10,318-case set, a blind review page and an XGBoost training/evaluation pipeline. These counts are reported branch state, not independently reproduced data acceptance. Latest fixes `f24a910` remove date-proxy inputs and tighten gates; the pipeline records 42 inputs. CI [36314415781](https://github.com/ishowguts/thermoscope/actions/runs/36314415781) independently checked as successful (frozen install, ML install, check and integration). Full scientific/code acceptance remains open. The branch reports zero human reviews; its rule-label dry run is not evaluation evidence. Do not put dry-run scores or an accuracy claim in the deck.
 
 P05's own task records technical/scientific gaps beyond missing people: truncated early history, evidence independence, large-facility grouping, no held-out-region protocol and missing label uncertainty/licence metadata. Binary source classification also excludes accident labels and serving learned predictions in the app. The rough 460/1,100 review counts are not guarantees of sufficient evidence or promotion.
 
-P05 branches from the old P04 implementation and must incorporate the review safeguards before its own integration. ADR-018/019 are reserved for the P05 decisions; this review uses ADR-020. New retrievals in `local/p05-fetch/`, `local/context-fetch/` and registry storage were preserved, not imported into the reviewed three-region main app.
+The original P05 branch came from old P04; `a243d29` now contains reviewed main via merge `09fb77b`. Verify the actual safeguards in independent acceptance before integration. ADR-018/019 are the P05 decisions, ADR-020 records the P03/P04 review, and the new handoff reports ADR-021. New retrievals in `local/p05-fetch/`, `local/context-fetch/` and registry storage were preserved, not imported into the reviewed three-region main app.
 
 ## What remains
 
-1. Submission deck and portal package, owned (internal record SUBMISSION-DECK). The PPT/PDF/video are not revised or submitted yet. Official public table checked around 21:58 IST on 27 September: SIH26162 **140/500**, deadline **30 September**. Recheck when submitting; portal field limits remain unverified.
-2. The implementer reconciles P05 under internal record P05-RECONCILE in its separate clone. Do not repeat P03/P04, rewrite published history, or change the Mac checkout/database.
-3. The integrator independently reviews the returned P05 branch, verifies Mac compatibility and integrates accepted changes. No review/model gate is waived to meet the submission date.
+1. Submission package is **ready for team review**, owned (internal record SUBMISSION-DECK). A new editable six-slide PPTX, visually verified six-page PDF (562,150 bytes), all three portal text fields and a speaking/video script are in `../output/submission/`; manifest and checks: `docs/SUBMISSION_PACKAGE.md`. Video is not recorded. No draft or submission was created. Official public table checked around 21:58 IST on 27 September: SIH26162 **140/500**, deadline **30 September**. Signed-in form checked around 22:19 IST: title 100 characters, description 50,000, summary 10,000; PDF up to 10 MB; optional YouTube link. Details in `docs/SUBMISSION_DETAILS.md`; recheck at submission.
+2. The implementer has returned the reconciliation handoff at `a243d29`; do not ask it to repeat that task without inspecting the result. Keep future fixes in its separate clone and preserve published history.
+3. The integrator independently reviews the returned P05 branch under internal record P05-RECONCILE, confirms CI, verifies Mac compatibility and integrates accepted changes. Main remains at migration 0005; test the branch's 0006/0007 on a disposable copy first. No review/model gate is waived to meet the submission date.
 4. Team leader arranges the human review: a domain reviewer for the prepared P03 sheet and two independent reviewers plus adjudication for P05 test labels. The P03 sheet contains rule outcomes and must not contaminate blind P05 test review.
 
 The complete remaining-work inventory, including P06–P08 and the leader's responsibilities, is `docs/REMAINING_WORK.md`. Prepare the submission now; do not wait for the full product.
 
-Registered team: **Git_Push_Pray**, Bittu Mandal, Team ID **144613**, **INDIAN INSTITUTE OF INFORMATION TECHNOLOGY, PUNE**. FIRMS access works and is stored privately. Earthdata web login works per the user; the current turn did not test programmatic archive/HLS access. Portal nomination/field limits remain unaudited. No cloud billing account, paid resource, public release or SIH submission was changed.
+Registered team: **Git_Push_Pray**, Bittu Mandal, Team ID **144613**, **INDIAN INSTITUTE OF INFORMATION TECHNOLOGY, PUNE**. FIRMS access works and is stored privately. Earthdata web login works per the user; programmatic archive/HLS access remains untested. Signed-in portal identity, six-member record and access to the correct idea form are verified; no separate nomination badge was displayed. Portal warns against changes after final submission. No cloud billing account, paid resource, public release, draft or SIH submission was changed.
 
 ## Local resources and restart
 

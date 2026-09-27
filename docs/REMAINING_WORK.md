@@ -1,13 +1,13 @@
 # ThermoScope — complete remaining-work checklist
 
-Checkpoint: 27 September 2026 IST. This is a delivery checklist, not a completion percentage or a promise of SIH selection. Implementation evidence lives in `EVIDENCE.md`; the authoritative phase order is `BUILD_PLAN.md`.
+Checkpoint: 28 September 2026 IST. This is a delivery checklist, not a completion percentage or a promise of SIH selection. Implementation evidence lives in `EVIDENCE.md`; the authoritative phase order is `BUILD_PLAN.md`.
 
 ## What already exists
 
 - P01–P04 are technically integrated on private GitHub main and verified on the Mac: genuine FIRMS ingestion, PostGIS, API/map, OSM/WorldCover context, events/sites, history and transparent rules with UNKNOWN outcomes. Main has 245 unique observations across three pilot regions. Rules are computed from data; they are uncalibrated heuristics, not learned probabilities or confirmed source truth.
 - The integrated checks passed: 106 unit/API plus 15 PostGIS tests, lint, formatting, TypeScript and production build. Real provider reads and the built browser flow were checked. Five evidence defects were corrected. Human domain review remains pending.
-- P05 exists separately at `579aaf3`: more saved data, frozen cases/splits, a blind annotation page and an XGBoost/baseline/calibration pipeline. Its latest Linux CI passed. It has not yet incorporated the reviewed main, passed the independent acceptance, or run on the Mac. No reportable learned-model performance exists. Predictions from that learned model are not served in the current app.
-- FIRMS access is working and stored privately. The team leader reports a working Earthdata login. Registered identity is Git_Push_Pray / Bittu Mandal / 144613 / INDIAN INSTITUTE OF INFORMATION TECHNOLOGY, PUNE. Identity and login do not by themselves verify SPOC nomination or completed submission.
+- P05's reconciliation handoff is now at `a243d29`: reviewed main is an ancestor and the implementer reports updated evidence/grouping/history/review gates. The integrator inspected the ref/history/handoff only during submission preparation; independent acceptance, current CI confirmation and Mac verification remain. No reportable learned-model performance exists. Predictions from that learned model are not served in the current app.
+- FIRMS access is working and stored privately. The team leader reports a working Earthdata login. Registered identity is Git_Push_Pray / Bittu Mandal / 144613 / INDIAN INSTITUTE OF INFORMATION TECHNOLOGY, PUNE. On 27 September around 22:19 IST, signed-in team details, submission access and form limits were verified. No separate nomination badge appeared; draft and submitted-idea lists were empty. See `SUBMISSION_DETAILS.md`.
 
 ## A. Before the national idea submission — priority now
 
@@ -15,20 +15,22 @@ The [official PS table](https://www.sih.gov.in/sih2026PS), checked at approximat
 
 | Remaining action | Owner | Completion evidence |
 | --- | --- | --- |
-| Verify SPOC nomination, chosen PS and signed-in portal requirements: abstract length, PDF size, supporting links and edit-after-submit behaviour | Team leader provides authenticated access; the integrator can inspect available UI | Recorded current constraints; no passwords in chat |
-| Rewrite the official six-slide presentation: problem, solution, technical approach, feasibility, impact and sources under template headings | The integrator | Editable deck and PDF; correct team details; built/proposed claims separated |
-| Capture honest screenshots of real replay, industrial-context candidate, non-industrial comparison and uncertainty; choose understandable cases | The integrator; domain reviewer validates interpretation | Saved screenshot/source evidence; no old solar-as-industrial error; no dry-run accuracy |
-| Write the portal abstract, architecture diagram, source references and a claim-to-evidence checklist | The integrator | Submission text and traceable claims |
-| Render and inspect every final slide; check readability, font/layout and portal size limit | The integrator | Six-page PDF checked visually |
-| Prepare a short demo script and, if useful/accepted by the portal, a roughly 2–3 minute video with captions | The integrator prepares; team can narrate | Playable, accurate supporting video. Optional support, not a verified mandatory field or guarantee |
+| Portal access/form inspection completed; recheck before final submission | Done using the leader's signed-in session | Correct SIH26162 form accessible; limits recorded in `SUBMISSION_DETAILS.md`; no draft/submission created and no separate nomination badge displayed |
+| Six-slide presentation prepared; team review pending | The integrator prepared; team reviews | Editable PPTX and six-page PDF in `../output/submission/`; correct team details; built/proposed claims separated |
+| Genuine screenshots captured; optional comparison clip and human interpretation remain | The integrator; domain reviewer validates interpretation | Final deck uses actual refinery map/history; solar UNKNOWN comparison is in the video shot list; no dry-run accuracy or independent source verdict |
+| Portal text, editable architecture, sources and claim ledger prepared | The integrator prepared; team reviews | Title 72, summary 1,570 and description 6,007 characters; files listed in `SUBMISSION_PACKAGE.md` |
+| Final PDF rendering and inspection completed | The integrator | All six pages visually inspected; 562,150 bytes, within 10 MB; five PDF reference links present |
+| Record and caption the optional roughly 2–3 minute demo video | The integrator prepares; team can narrate | Speaking script and shot list exist; no recorded/uploaded video yet. No selection guarantee |
 | Make supporting material accessible to judges | Prepared; team chooses public scope | Logged-out link checks. Private GitHub is not a judge-accessible public demo; a reviewed video can avoid waiting for deployment |
 | Approve the exact PDF/text, submit through the team account and retain proof | Team leader/team | Submitted PDF, acknowledgement/receipt and verified portal state |
 
 Do **not** wait for P06–P08 or hundreds of reviews before preparing/submitting the idea. At current evidence level, say: “Real-data GIS, contextual rules and history demonstrated; labelling and training pipeline built on a separate branch; model not yet independently evaluated.” Do not imply that an unevaluated learned model is already operating. Selection remains the organizers' decision.
 
-## B. P05 technical reconciliation — the implementer next
+## B. P05 technical reconciliation — returned, acceptance pending
 
 Full contract and paste prompt: P05-RECONCILE.md.
+
+On 28 September, the integrator fetched `a243d29` and confirmed main `52c91f0` is an ancestor. The implementer reports completion of the work below, 146 unit/API + 18 integration checks, new versioned cases/features and zero real reviews. These boxes remain unchecked until independent acceptance; do not ask the implementer to redo the task from its older prompt. New CI and actual code/data behaviour have not been verified in this submission-only checkpoint.
 
 - [ ] Merge reviewed main into P05 in its separate checkout; preserve both histories and all review fixes.
 - [ ] Check derived P05 features, weak labels and NOAA-20 SP/NRT handling against the corrected rules, coverage and solar safeguards.
@@ -44,7 +46,7 @@ Full contract and paste prompt: P05-RECONCILE.md.
 
 - [ ] Independently inspect the reconciled code and reproduce material scientific/operational checks; address actionable findings.
 - [ ] Verify frozen ML installation and XGBoost/OpenMP on this Mac. Linux CI does not cover it.
-- [ ] Exercise migration 0006 on a disposable database with existing-data preservation and a usable backup/restore path; then apply to main only after acceptance.
+- [ ] Exercise migrations 0006 and 0007 on a disposable database with existing-data preservation and a usable backup/restore path; then apply to main only after acceptance.
 - [ ] Import the exact hash-verified saved data needed for the accepted scope; reuse existing downloads. Verify counts, deduplication, case manifests and dependency versions.
 - [ ] Run browser/API review checks with test fixtures, including token failures, two reviewers, disagreement and immutable records. Do not create fake real labels during testing.
 - [ ] Configure a private annotation token without printing or committing it. Decide how real reviewers reach the app: localhost works only on that computer; remote access needs a suitable private service.
@@ -97,8 +99,8 @@ Separate MODIS support, wider sensor/geographic coverage, multi-class/subtype mo
 
 ## What the team leader must supply, and what the developers can do
 
-**Leader/team:** authenticated portal access or the verified field limits; real reviewers and their independent decisions; a private means to share reviewer access; provider/billing/budget choices if cloud spending becomes necessary; public-release/licence choices; final submission approval and team rehearsal/narration. Do not paste credentials in chat. Existing FIRMS and Earthdata setup need not be repeated.
+**Leader/team:** real reviewers and their independent decisions; a private means to share reviewer access; provider/billing/budget choices if cloud spending becomes necessary; public-release/licence choices; final submission approval and team rehearsal/narration. Portal access was supplied and form limits were inspected; sign in again only if the session expires. Do not paste credentials in chat. Existing FIRMS and Earthdata setup need not be repeated.
 
 **The developers can handle:** source collection, manifests, engineering review, Mac checks, migration/integration, private token generation, review-tool setup, evidence packets, deck/abstract/diagrams, visual QA, demo script, technical deployment preparation, tests and reproducible handoffs. It can execute approved cloud/publishing/submission actions once the exact target and necessary access are established. It cannot supply independent human labels or guarantee SIH selection.
 
-**Next allocation:** the implementer works on section B; the integrator prioritizes section A while preparing section C for the handoff; the leader arranges section D's reviewers and portal verification. No additional a frontend contributor work is necessary right now. Assign it a separate bounded task only when that would help without overlapping ownership.
+**Next allocation:** the implementer works on section B; the integrator prioritizes section A while preparing section C for the handoff; the leader arranges section D's reviewers. Portal inspection is complete; final submission remains pending. No additional a frontend contributor work is necessary right now. Assign it a separate bounded task only when that would help without overlapping ownership.

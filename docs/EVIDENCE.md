@@ -185,3 +185,29 @@ Current refs were fetched and the branch task/code/history inspected. Main and o
 - The [official SIH PS table](https://www.sih.gov.in/sih2026PS) was opened in the browser and filtered to SIH26162: **140/500**, **30 September 2026**, checked around **21:58 IST, 27 September** (clock check 16:28:13 UTC). Direct text retrieval was blocked; the actual browser table supplied this evidence. No signed-in portal constraints were inspected.
 - Current task/known-limit inspection identified outstanding history, independent evidence, geographic protocol, label metadata and Mac ML gates; these are explicit in internal record P05-RECONCILE. No newly reproduced code defect or final review verdict is claimed.
 - This checkpoint changes documentation only. No application tests repeated; no database, secrets, paid resource, public release or submission changed. Complete pending-work list: `REMAINING_WORK.md`.
+
+## 27 September 2026 approximately 22:19 IST — authenticated portal inspection
+
+User completed login personally. Browser read-only navigation verified team identity and six registered members, empty Draft Idea List and View Submitted Idea tables, SIH26162 / NTRO / Software / Disaster Management at 140/500, and the matching blank submission form. No separate nomination-status badge appeared; successful form access is the evidence, not a claim to have audited the SPOC backend.
+
+Observed form: title maximum 100 characters; description 50,000; abstract/summary 10,000; PDF up to 10 MB; optional YouTube link; technology dropdown including the combined AI/ML, Cloud Computing, Blockchain option; Save as Draft. No dedicated GitHub/website field was visible. Draft list states two ideas maximum and warns against changes after submission; form warns against post-submit changes over email/call. Actual final-submit controls/editing were not tested because no draft exists.
+
+Sources: `/teamDetail`, `/teamDraftIdeas`, `/teamIdeas`, signed-in PS search, and [SIH26162 form](https://www.sih.gov.in/participate/MjYxNjI=). Only nonsensitive constraints and already-authorized team identity were recorded; no passwords or member contact data saved. No form changes, uploads, draft save or final submission. Clock check: 16:48:58 UTC. Canonical field checklist: `SUBMISSION_DETAILS.md`.
+
+## 27–28 September 2026 — prepared six-slide submission package
+
+New files were prepared outside Git in workspace `output/submission/`, leaving the original PPT and Canva unchanged. Base main: `52c91f0`; application implementation remains reviewed P03/P04 `b87fa86`. Existing local API/Vite/PostGIS were started for actual browser screenshots without changing code or importing more data. Screenshot subjects: the Jamnagar refinery candidate (2.17 MW, observation `903e66bf0e04ceebdc6ffd140c54c17a70d6803140523bb44be86e3694660f80`) and its retrospective rules/history with seven earlier active days. Human source confirmation remains pending.
+
+| Check | Result | Boundary |
+| --- | --- | --- |
+| Official template import | Six content slides kept, instruction page omitted; official headings/artwork/dimensions retained | Original deck preserved |
+| ArtifactTool finalization | Package/layout checks pass with zero findings/warnings; six-slide re-import passes | Not native Microsoft PowerPoint rendering |
+| PDF export | LibreOffice 26.2.3.2; six pages, 562,150 bytes | First sandbox export failed; approved local retry succeeded |
+| Visual inspection | Poppler rendered all six final PDF pages; each inspected for layout, identity, screenshots, arrows and references | No clinical/safety or model-accuracy claim implied |
+| PDF text/link checks | Exact team/PS identity, 245 count and evaluation-pending wording present; five source links preserved | Research links are references, not ThermoScope performance evidence |
+| Portal lengths | Title 72/100; summary 1,570/10,000; description 6,007/50,000 characters | Excludes final newline; including it remains within limits |
+| Claim review | Main GIS/rules shown as built; P05 explicitly a separate branch; independent evaluation pending; AlphaEarth proposed | No dry-run scores, confirmed accidents, measured impact or production-readiness claims |
+
+Final PDF SHA-256: `e2de296e47bd71f2ee7bf6bb4a83f7d2473189b6ba695d41c8a1455489991d94`. PPTX: `d5d2deda29451836e49ac5477d1411ed51584d520b3730df45ed5183a2e2e3b0`. Detailed manifest: `SUBMISSION_PACKAGE.md`; local builder, finalization receipt, renders and package verification: workspace `.review/submission-build/`. A speaking/video script exists; a recorded video does not. No portal entry/upload/save/submission or public publication occurred. Application tests were not repeated for unchanged code.
+
+Checkpoint fetch found P05 advanced from `579aaf3` to `a243d29`. `git merge-base --is-ancestor 52c91f0 origin/p05-model` returned success. Its handoff reports 146 unit/API + 18 integration tests, migrations through 0007 and zero real reviews. Only ref/history/handoff inspected here; fresh CI confirmation, independent acceptance and Mac verification are still pending. Submission claims were not upgraded from this report.
