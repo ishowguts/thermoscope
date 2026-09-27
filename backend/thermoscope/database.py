@@ -8,13 +8,27 @@ from thermoscope.config import Settings
 SCHEMA_REVISION = "0005_landcover"
 
 
+API_STATEMENT_TIMEOUT_MS = 2000
+# Offline batch jobs (event building, case features, training) scan whole regions.
+BATCH_STATEMENT_TIMEOUT_MS = 600_000
+
+
 @contextmanager
-def database_engine(settings: Settings):
+def batch_engine(settings: Settings):
+    with database_engine(settings, statement_timeout_ms=BATCH_STATEMENT_TIMEOUT_MS) as engine:
+        yield engine
+
+
+@contextmanager
+def database_engine(settings: Settings, statement_timeout_ms: int = API_STATEMENT_TIMEOUT_MS):
     if settings.database_url is None:
         raise ValueError("database_not_configured")
     engine = create_engine(
         settings.database_url.get_secret_value(),
-        connect_args={"connect_timeout": 3, "options": "-c statement_timeout=2000"},
+        connect_args={
+            "connect_timeout": 3,
+            "options": f"-c statement_timeout={int(statement_timeout_ms)}",
+        },
         hide_parameters=True,
         pool_pre_ping=True,
     )

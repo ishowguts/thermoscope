@@ -132,3 +132,19 @@ def test_success_after_transient_error_and_credential_echo_rejected():
     assert fetch_csv("a" * 32, window(), opener=opener, sleep=lambda _: None) == fixture_csv()
     with pytest.raises(IngestError, match="UNSAFE_PROVIDER_RESPONSE"):
         fetch_csv("a" * 32, window(), opener=Opener([b"a" * 32]))
+
+
+def test_standard_product_keeps_nasa_type_only_as_a_retrospective_field():
+    header = HEADER.rstrip("\n") + ",type\n"
+    sp_window = Window(
+        product="VIIRS_NOAA20_SP", bounds=Bounds.parse("69.5,22,70.5,23"),
+        start_date="2026-01-01", days=3,
+    )  # fmt: skip
+    rows = [ROW.rstrip("\n").replace("2.0NRT", "2") + ",2\n", ROW.rstrip("\n") + ",9\n"]
+    valid, rejected = parse_csv((header + "".join(rows)).encode(), sp_window,
+                                DataMode.HISTORICAL_REPLAY, RECEIVED)  # fmt: skip
+    assert [r.payload["nasa_type"] for r in valid] == [2]
+    assert [r.reason for r in rejected] == ["INVALID_VIIRS_ROW"]
+    nrt = parse_csv(fixture_csv(), window(), DataMode.HISTORICAL_REPLAY, RECEIVED)[0][0]
+    assert "nasa_type" not in nrt.payload  # NRT identity and payload are unchanged
+    assert valid[0].identity != nrt.identity  # different product, different physical identity

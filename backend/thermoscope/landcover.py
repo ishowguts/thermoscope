@@ -17,7 +17,7 @@ from rasterio.windows import from_bounds
 from sqlalchemy import text
 
 from thermoscope.config import DataMode, Settings
-from thermoscope.database import database_engine
+from thermoscope.database import batch_engine
 from thermoscope.firms import IngestError
 from thermoscope.object_store import ObjectStore
 from thermoscope.regions import REGIONS, Bounds
@@ -124,6 +124,61 @@ def read_window(source: str, lon: float, lat: float, radius_m: float):
     return array.astype(np.uint8), transform, clipped
 
 
+class TileCache:
+    """One read per tile covering many observations; slices match single reads exactly."""
+
+    def __init__(self):
+        self.blocks: dict[str, tuple] = {}
+
+    def prepare(self, source: str, points: list[tuple[float, float]], radius_m: float):
+        path = source if not source.startswith("https://") else "/vsicurl/" + source
+        if source.startswith("https://") and not source.startswith(TILE_PREFIX):
+            raise IngestError("ENDPOINT_NOT_ALLOWED")
+        lats = [lat for _, lat in points]
+        m_lat, m_lon = metres_per_degree(max(abs(v) for v in lats))
+        dlat, dlon = radius_m / m_lat * 1.1, radius_m / m_lon * 1.1
+        west = min(lon for lon, _ in points) - dlon
+        east = max(lon for lon, _ in points) + dlon
+        south, north = min(lats) - dlat, max(lats) + dlat
+        with rasterio.Env(**GDAL_OPTIONS), rasterio.open(path) as dataset:
+            if dataset.crs is None or dataset.crs.to_epsg() != 4326 or dataset.count != 1:
+                raise IngestError("UNSUPPORTED_RASTER")
+            window = from_bounds(west, south, east, north, dataset.transform)
+            window = window.round_offsets().round_lengths()
+            array = dataset.read(1, window=window, boundless=True, fill_value=NODATA)
+            self.blocks[source] = (
+                array.astype(np.uint8),
+                window,
+                dataset.transform,
+                dataset.bounds,
+            )
+
+    def read(self, source: str, lon: float, lat: float, radius_m: float):
+        if source not in self.blocks:
+            return read_window(source, lon, lat, radius_m)
+        block, outer, base, b = self.blocks[source]
+        m_lat, m_lon = metres_per_degree(lat)
+        dlat, dlon = radius_m / m_lat * 1.05, radius_m / m_lon * 1.05
+        window = from_bounds(lon - dlon, lat - dlat, lon + dlon, lat + dlat, base)
+        window = window.round_offsets().round_lengths()
+        row = int(window.row_off - outer.row_off)
+        col = int(window.col_off - outer.col_off)
+        if (
+            row < 0
+            or col < 0
+            or row + window.height > block.shape[0]
+            or (col + window.width > block.shape[1])
+        ):
+            return read_window(source, lon, lat, radius_m)
+        array = block[row : row + int(window.height), col : col + int(window.width)]
+        transform = rasterio.windows.transform(window, base)
+        clipped = not (
+            b.left <= lon - dlon and lon + dlon <= b.right and b.bottom <= lat - dlat
+            and lat + dlat <= b.top
+        )  # fmt: skip
+        return array.copy(), transform, clipped
+
+
 def chip_bytes(array, transform) -> bytes:
     profile = {
         "driver": "GTiff",
@@ -149,6 +204,7 @@ def extract_landcover(
     *,
     resolve=lambda tile: tile_url(tile),
     force: bool = False,
+    observation_ids: list[str] | None = None,
 ) -> dict:
     from thermoscope.context import support_radius_m  # context imports this module
 
@@ -159,7 +215,7 @@ def extract_landcover(
     run_id = str(uuid4())
     store = ObjectStore(settings.object_store_local_path)
     items, failed = [], []
-    with database_engine(settings) as engine:
+    with batch_engine(settings) as engine:
         with engine.connect() as conn:
             rows = conn.execute(
                 text("""
@@ -174,6 +230,7 @@ def extract_landcover(
                   AND (:force OR NOT EXISTS (SELECT 1 FROM landcover_summaries s
                       WHERE s.observation_id=o.id AND s.product=:product
                       AND s.summary_version=:version))
+                  AND (CAST(:ids AS text[]) IS NULL OR o.id = ANY(CAST(:ids AS text[])))
                 ORDER BY o.acquired_at,o.id
             """),
                 bounds.model_dump()
@@ -182,13 +239,24 @@ def extract_landcover(
                     "product": PRODUCT,
                     "version": SUMMARY_VERSION,
                     "force": force,
+                    "ids": observation_ids,
                 },
             ).all()
+        cache = TileCache()
+        by_tile: dict[str, list] = {}
+        for _, lon, lat, _, _ in rows:
+            by_tile.setdefault(resolve(tile_id(lon, lat)), []).append((lon, lat))
+        for source, points in by_tile.items():
+            if len(points) > 1:
+                try:
+                    cache.prepare(source, points, CONTEXT_RADIUS_M)
+                except (IngestError, rasterio.errors.RasterioError, OSError):
+                    pass  # fall back to per-observation reads, which record their own failure
         for observation_id, lon, lat, scan, track in rows:
             tile = tile_id(lon, lat)
             source = resolve(tile)
             try:
-                array, transform, clipped = read_window(source, lon, lat, CONTEXT_RADIUS_M)
+                array, transform, clipped = cache.read(source, lon, lat, CONTEXT_RADIUS_M)
             except (IngestError, rasterio.errors.RasterioError, OSError) as error:
                 code = error.code if isinstance(error, IngestError) else "RASTER_READ_FAILED"
                 failed.append({"observation_id": observation_id, "error_code": code})

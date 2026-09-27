@@ -156,3 +156,17 @@ def create_client_app(settings):
     from thermoscope.main import create_app
 
     return create_app(settings)
+
+
+def test_tile_cache_slices_match_single_reads_exactly(tmp_path):
+    from thermoscope.landcover import TileCache
+
+    path = synthetic_raster(tmp_path / "wc.tif")
+    points = [(69.8, 22.3), (69.812, 22.288), (69.7806, 22.3194), (69.79, 22.31)]
+    cache = TileCache()
+    cache.prepare(path, points, 1000)
+    for lon, lat in points:
+        single = read_window(path, lon, lat, 1000)
+        cached = cache.read(path, lon, lat, 1000)
+        assert (single[0] == cached[0]).all() and single[0].shape == cached[0].shape
+        assert tuple(single[1])[:6] == tuple(cached[1])[:6] and single[2] == cached[2]

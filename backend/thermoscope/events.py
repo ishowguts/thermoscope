@@ -8,6 +8,7 @@ hashes of memberships, so a fixed input set and parameter version always gives t
 import hashlib
 import json
 import math
+from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -15,11 +16,11 @@ from uuid import uuid4
 from sqlalchemy import text
 
 from thermoscope.config import DataMode, Settings
-from thermoscope.database import database_engine
+from thermoscope.database import batch_engine, database_engine
 from thermoscope.firms import IngestError
-from thermoscope.regions import REGIONS, Bounds, Product
+from thermoscope.regions import NOAA20_FAMILY, NOAA20_PRODUCTS, REGIONS, Bounds, Product
 
-ALGORITHM_VERSION = "event-site-v1"
+ALGORITHM_VERSION = "event-site-v2"
 MAX_INPUT_OBSERVATIONS = 20_000
 RECEIPT_FILTER = """
     EXISTS (SELECT 1 FROM observation_receipts x JOIN ingestion_runs r ON r.id=x.run_id
@@ -35,6 +36,9 @@ class Params:
     max_diameter_m: float = 1500.0
     site_link_distance_m: float = 750.0
     site_max_diameter_m: float = 1500.0
+    # v2: a persistent source detected every night would otherwise form one event lasting
+    # months; episodes are closed after seven days and continue as new events at the same site.
+    max_duration_hours: float = 168.0
 
     def sha256(self) -> str:
         body = {"version": ALGORITHM_VERSION} | asdict(self)
@@ -53,15 +57,27 @@ class Distances:
 
     def __init__(self, pairs: dict[tuple[str, str], float]):
         self.pairs = {tuple(sorted(k)): v for k, v in pairs.items()}
+        self.adjacent: dict[str, set[str]] = defaultdict(set)
+        for a, b in self.pairs:
+            self.adjacent[a].add(b)
+            self.adjacent[b].add(a)
 
     def get(self, a: str, b: str) -> float:
         return 0.0 if a == b else self.pairs.get((a, b) if a < b else (b, a), math.inf)
+
+    def neighbors(self, a: str) -> set[str]:
+        return self.adjacent.get(a, set())
 
     def diameter(self, members: list[str]) -> float:
         return max(
             (self.get(a, b) for i, a in enumerate(members) for b in members[i + 1 :]),
             default=0.0,
         )
+
+    def within(self, a: str, members, limit: float) -> bool:
+        """True when every member is within the limit of a (unknown pairs are too far)."""
+        near = self.neighbors(a)
+        return all(m == a or (m in near and self.get(a, m) <= limit) for m in members)
 
 
 @dataclass
@@ -72,20 +88,33 @@ class Group:
     ambiguous: int = 0
     merged: bool = False
 
+    @property
+    def started_at(self) -> datetime:
+        return self.key[0]
+
 
 def build_events(points: list[Point], dist: Distances, params: Params):
-    """Process observations in (time, id) order; return member lists and the merge count."""
+    """Process observations in (time, id) order; return member lists and the merge count.
+
+    Only groups with a member inside the distance index are examined, so dense regions stay
+    tractable; results are the same as scanning every group.
+    """
     gap = timedelta(hours=params.max_gap_hours)
+    span = timedelta(hours=params.max_duration_hours)
     groups: list[Group] = []
+    owner: dict[str, Group] = {}
     merges = 0
     for point in sorted(points, key=lambda p: (p.acquired_at, p.id)):
+        nearby = {id(g): g for n in dist.neighbors(point.id) if (g := owner.get(n))}.values()
         candidates = []
-        for group in groups:
+        for group in sorted(nearby, key=lambda g: g.key):
             if group.merged or point.acquired_at - group.last_at > gap:
                 continue
+            if point.acquired_at - group.started_at > span:
+                continue  # the episode reached its maximum duration
             link = min(dist.get(point.id, m) for m in group.members)
             if link <= params.link_distance_m:
-                fits = all(dist.get(point.id, m) <= params.max_diameter_m for m in group.members)
+                fits = dist.within(point.id, group.members, params.max_diameter_m)
                 candidates.append((link, group.key, group, fits))
         candidates.sort(key=lambda c: (c[0], c[1]))
         fitting = [c for c in candidates if c[3]]
@@ -98,44 +127,73 @@ def build_events(points: list[Point], dist: Distances, params: Params):
             target.ambiguous += 1 if len(candidates) > 1 else 0
         else:
             union = [m for c in fitting for m in c[2].members] + [point.id]
-            if dist.diameter(union) <= params.max_diameter_m:
-                target = min(fitting, key=lambda c: c[1])[2]
+            keeper = min(fitting, key=lambda c: c[1])[2]
+            compact = dist.diameter(union) <= params.max_diameter_m
+            short = point.acquired_at - keeper.started_at <= span
+            if compact and short:
+                target = keeper
                 for _, _, other, _ in fitting:
                     if other is not target:
                         target.members.extend(other.members)
                         target.ambiguous += other.ambiguous
                         other.merged = True
+                        for m in other.members:
+                            owner[m] = target
                 merges += 1
             else:
                 target = fitting[0][2]  # nearest; the other links are recorded, not merged
                 target.ambiguous += 1
         target.members.append(point.id)
         target.last_at = point.acquired_at
+        owner[point.id] = target
     return [g for g in groups if not g.merged], merges
 
 
 def build_sites(events: list[dict], dist: Distances, params: Params) -> list[dict]:
     """Group events by location regardless of time; anchor-based identity stays stable."""
     sites: list[dict] = []
+    site_of: dict[str, dict] = {}
     for event in sorted(events, key=lambda e: (e["started_at"], e["id"])):
+        nearby = {}
+        for m in event["members"]:
+            for n in dist.neighbors(m):
+                if (site := site_of.get(n)) is not None:
+                    nearby[site["anchor"]] = site
+        event_diameter = dist.diameter(event["members"])
         candidates = []
-        for site in sites:
-            link = min(dist.get(a, b) for a in event["members"] for b in site["members"])
+        for anchor in sorted(nearby):
+            site = nearby[anchor]
+            link = min(
+                dist.get(a, b) for a in event["members"] for b in dist.neighbors(a)
+                if site_of.get(b) is site
+            )  # fmt: skip
             if link <= params.site_link_distance_m:
-                fits = dist.diameter(site["members"] + event["members"]) <= (
-                    params.site_max_diameter_m
+                limit = params.site_max_diameter_m
+                fits = (
+                    site["diameter"] <= limit
+                    and event_diameter <= limit
+                    and all(dist.within(a, site["member_set"], limit) for a in event["members"])
                 )
-                candidates.append((link, site["anchor"], site, fits))
+                candidates.append((link, anchor, site, fits))
         candidates.sort(key=lambda c: (c[0], c[1]))
         fitting = [c for c in candidates if c[3]]
         if fitting:
             site = fitting[0][2]
             site["ambiguous"] += 1 if len(candidates) > 1 else 0
+            cross = max(
+                (dist.get(a, b) for a in event["members"] for b in site["member_set"]),
+                default=0.0,
+            )
+            site["diameter"] = max(site["diameter"], event_diameter, cross)
         else:
-            site = {"anchor": event["members"][0], "members": [], "events": [], "ambiguous": 0}
+            site = {"anchor": event["members"][0], "members": [], "member_set": set(),
+                    "events": [], "ambiguous": 0, "diameter": event_diameter}  # fmt: skip
             sites.append(site)
         site["members"].extend(event["members"])
+        site["member_set"].update(event["members"])
         site["events"].append(event)
+        for m in event["members"]:
+            site_of[m] = site
         event["site_anchor"] = site["anchor"]
     return sites
 
@@ -186,26 +244,30 @@ def build_event_run(
     params: Params | None = None,
     force: bool = False,
 ) -> dict:
+    if product.value not in NOAA20_PRODUCTS:
+        raise IngestError("EVENTS_SUPPORT_NOAA20_ONLY")
     params = params or Params()
     params_sha = params.sha256()
     bounds = region_bounds(region_id)
     scope = bounds.model_dump() | {
         "mode": mode.value,
-        "product": product.value,
+        "product": NOAA20_FAMILY,
+        "products": list(NOAA20_PRODUCTS),
         "region": region_id,
         "version": ALGORITHM_VERSION,
         "params_sha": params_sha,
     }
-    with database_engine(settings) as engine, engine.begin() as conn:
+    with batch_engine(settings) as engine, engine.begin() as conn:
         conn.execute(
             text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
-            {"key": f"events:{region_id}:{mode.value}:{product.value}"},
+            {"key": f"events:{region_id}:{mode.value}:{NOAA20_FAMILY}"},
         )
         rows = conn.execute(
             text(f"""
-            SELECT o.id,o.acquired_at,(o.payload->>'frp_mw')::double precision AS frp
+            SELECT o.id,o.acquired_at,(o.payload->>'frp_mw')::double precision AS frp,o.product
             FROM observations o
-            WHERE o.product=:product AND o.geom && ST_MakeEnvelope(:west,:south,:east,:north,4326)
+            WHERE o.product = ANY(:products)
+                AND o.geom && ST_MakeEnvelope(:west,:south,:east,:north,4326)
                 AND {RECEIPT_FILTER}
             ORDER BY o.acquired_at,o.id
         """),
@@ -213,19 +275,41 @@ def build_event_run(
         ).all()
         if len(rows) > MAX_INPUT_OBSERVATIONS:
             raise IngestError("EVENT_INPUT_LIMIT_EXCEEDED")
+        # NRT and standard (SP) files are fetched for non-overlapping periods. The same
+        # detection in both would be counted twice, so overlapping days are refused until an
+        # NRT/SP reconciliation step exists.
+        days = defaultdict(set)
+        for r in rows:
+            days[r[3]].add(r[1].date())
+        if len(days) > 1 and set.intersection(*days.values()):
+            raise IngestError("NRT_SP_OVERLAP_NEEDS_RECONCILIATION")
         points = [Point(r[0], r[1], r[2]) for r in rows]
-        pairs = conn.execute(
+        limit = max(params.max_diameter_m, params.site_max_diameter_m)
+        # An indexed temporary table and a generous degree pre-filter keep the self-join
+        # tractable; the exact geodesic test decides.
+        widest = max(abs(scope["south"]), abs(scope["north"]))
+        degrees = limit / (111_000.0 * math.cos(math.radians(min(widest, 85.0)))) * 1.05
+        conn.execute(text("DROP TABLE IF EXISTS event_input"))
+        conn.execute(
             text(f"""
-            WITH s AS (
-                SELECT o.id,o.geom FROM observations o
-                WHERE o.product=:product
-                    AND o.geom && ST_MakeEnvelope(:west,:south,:east,:north,4326)
-                    AND {RECEIPT_FILTER})
+            CREATE TEMP TABLE event_input ON COMMIT DROP AS
+            SELECT o.id,o.geom FROM observations o
+            WHERE o.product = ANY(:products)
+                AND o.geom && ST_MakeEnvelope(:west,:south,:east,:north,4326)
+                AND {RECEIPT_FILTER}
+        """),
+            scope,
+        )
+        conn.execute(text("CREATE INDEX ON event_input USING gist(geom)"))
+        conn.execute(text("ANALYZE event_input"))
+        pairs = conn.execute(
+            text("""
             SELECT a.id,b.id,ST_Distance(a.geom::geography,b.geom::geography)
-            FROM s a JOIN s b ON a.id < b.id
+            FROM event_input a JOIN event_input b
+                ON a.id < b.id AND ST_DWithin(a.geom,b.geom,:degrees)
                 AND ST_DWithin(a.geom::geography,b.geom::geography,:limit)
         """),
-            scope | {"limit": max(params.max_diameter_m, params.site_max_diameter_m)},
+            {"limit": limit, "degrees": degrees},
         ).all()
         dist = Distances({(a, b): float(d) for a, b, d in pairs})
         input_sha = hashlib.sha256("\n".join(sorted(p.id for p in points)).encode()).hexdigest()
@@ -334,7 +418,7 @@ def build_event_run(
                     "last": max(times),
                     "events": len(site["events"]),
                     "count": len(site["members"]),
-                    "diameter": dist.diameter(site["members"]),
+                    "diameter": site["diameter"],
                     "members": site["members"],
                 },
             )
@@ -409,9 +493,11 @@ LATEST_RUNS = """
 
 
 def list_events(settings, bounds: Bounds, start, end, mode: DataMode, product: Product, limit):
+    if product.value not in NOAA20_PRODUCTS:
+        raise ValueError("events are built for the NOAA-20 stream only")
     params = bounds.model_dump() | {
         "mode": mode.value,
-        "product": product.value,
+        "product": NOAA20_FAMILY,
         "version": ALGORITHM_VERSION,
         "start": datetime.combine(start, datetime.min.time(), UTC),
         "end": datetime.combine(end + timedelta(days=1), datetime.min.time(), UTC),

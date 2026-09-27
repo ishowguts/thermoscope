@@ -99,3 +99,29 @@ def test_lineage_relations():
         ("n5", "o5"): "SAME",
     }
     assert lineage({"n": {"a"}}, {"o": {"a", "b"}}) == [("n", "o", "SHRANK", 1)]
+
+
+def test_episodes_close_after_the_maximum_duration_but_stay_one_site():
+    nightly = [Point(f"n{i:02d}", T0 + timedelta(days=i)) for i in range(20)]
+    dist = on_a_line({p.id: (i % 3) * 50 for i, p in enumerate(nightly)})
+    groups, _ = build_events(nightly, dist, Params())
+    lengths = [len(g.members) for g in sorted(groups, key=lambda g: g.key)]
+    assert lengths == [8, 8, 4]  # 0-7, 8-15, 16-19: each episode spans at most 7 days
+    events = [{"id": g.members[0], "members": g.members, "started_at": g.key[0]} for g in groups]
+    sites = build_sites(events, dist, Params())
+    assert len(sites) == 1 and len(sites[0]["events"]) == 3
+    assert sites[0]["diameter"] == dist.diameter(sites[0]["members"]) == 100
+
+
+def test_indexed_grouping_matches_a_brute_force_diameter_check():
+    rng = random.Random(9)
+    positions = {f"p{i:03d}": rng.uniform(0, 4000) for i in range(120)}
+    points = [Point(k, T0 + timedelta(hours=rng.uniform(0, 400))) for k in positions]
+    dist = on_a_line(positions)
+    groups, _ = build_events(points, dist, Params())
+    assert sorted(m for g in groups for m in g.members) == sorted(positions)
+    for g in groups:
+        assert dist.diameter(g.members) <= Params().max_diameter_m
+    events = [{"id": g.members[0], "members": g.members, "started_at": g.key[0]} for g in groups]
+    for site in build_sites(events, dist, Params()):
+        assert site["diameter"] == dist.diameter(site["members"]) <= Params().site_max_diameter_m

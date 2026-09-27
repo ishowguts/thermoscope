@@ -109,3 +109,27 @@ def test_deterministic_runs_late_arrival_lineage_and_api(configured):
         == 404
     )
     assert client.get("/api/v1/events", params=params | {"bbox": "0,0,9,9"}).status_code == 422
+
+
+def test_standard_and_nrt_products_form_one_stream_but_never_overlap(configured):
+    from test_firms import HEADER
+    from thermoscope.firms import IngestError
+
+    load(configured, P1)  # NRT, 2 January
+    sp_window = Window(product="VIIRS_NOAA20_SP", bounds=Bounds.parse("69.5,22,70.5,23"),
+                       start_date="2026-01-03", days=2)  # fmt: skip
+    sp_row = row(22.3, 69.8003, 3, "0500", 2.5).rstrip("\n").replace("2.0NRT", "2") + ",2\n"
+    header = HEADER.rstrip("\n") + ",type\n"
+    report = ingest(configured, sp_window, DataMode.SYNTHETIC_FIXTURE,
+                    payload=(header + sp_row).encode())  # fmt: skip
+    assert report["status"] == "SUCCEEDED", report
+    run = build_event_run(configured, "jamnagar", DataMode.SYNTHETIC_FIXTURE)
+    assert run["input_count"] == 2 and run["event_count"] == 1  # NRT and SP: one episode
+
+    overlap_window = Window(product="VIIRS_NOAA20_SP", bounds=Bounds.parse("69.5,22,70.5,23"),
+                            start_date="2026-01-02", days=1)  # fmt: skip
+    same_day = row(22.4, 69.9, 2, "0905", 1.0).rstrip("\n").replace("2.0NRT", "2") + ",2\n"
+    ingest(configured, overlap_window, DataMode.SYNTHETIC_FIXTURE,
+           payload=(header + same_day).encode())  # fmt: skip
+    with pytest.raises(IngestError, match="NRT_SP_OVERLAP_NEEDS_RECONCILIATION"):
+        build_event_run(configured, "jamnagar", DataMode.SYNTHETIC_FIXTURE)
