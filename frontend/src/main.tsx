@@ -30,9 +30,13 @@ import type {
   ObservationPage,
   Timeline as TimelineData,
 } from "./api";
+import { Rail } from "./Rail";
 import { Timeline } from "./Timeline";
 const MapView = lazy(() =>
   import("./MapView").then((module) => ({ default: module.MapView })),
+);
+const ReviewPage = lazy(() =>
+  import("./Review").then((module) => ({ default: module.ReviewPage })),
 );
 import "./style.css";
 
@@ -625,24 +629,7 @@ function App() {
 
   return (
     <div className="shell">
-      <aside className="rail" aria-label="Project identity">
-        <a className="brand" href="/" aria-label="ThermoScope home">
-          <span className="mark">T</span> ThermoScope
-        </a>
-        <div className="rail-section">WORKSPACE</div>
-        <div className="selected">
-          ◉ <span>Observations</span>
-        </div>
-        <p className="rail-note">
-          A traceable view of
-          <br />
-          satellite-detected heat.
-        </p>
-        <div className="rail-bottom">
-          <span className="dot" /> Regional pilot
-          <small>Git_Push_Pray · SIH 2026</small>
-        </div>
-      </aside>
+      <Rail active="observations" />
       <main>
         <header>
           <span>THERMAL INTELLIGENCE WORKBENCH</span>
@@ -952,8 +939,43 @@ function App() {
   );
 }
 
+function currentPage(): "observations" | "review" {
+  return window.location.hash.startsWith("#/review")
+    ? "review"
+    : "observations";
+}
+
+function Root() {
+  const [page, setPage] = useState(currentPage);
+  const [reviewOnly, setReviewOnly] = useState(false);
+  useEffect(() => {
+    const update = () => setPage(currentPage());
+    window.addEventListener("hashchange", update);
+    return () => window.removeEventListener("hashchange", update);
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    readApi<{ review_only?: boolean }>("/api/v1/status", controller.signal)
+      .then((status) => setReviewOnly(Boolean(status.review_only)))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+  // A blind-review server never shows the automated assessments.
+  if (page === "observations" && !reviewOnly) return <App />;
+  return (
+    <div className="shell">
+      <Rail active="review" reviewOnly={reviewOnly} />
+      <main>
+        <Suspense fallback={<p className="help">Loading review workspace…</p>}>
+          <ReviewPage />
+        </Suspense>
+      </main>
+    </div>
+  );
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <Root />
   </StrictMode>,
 );

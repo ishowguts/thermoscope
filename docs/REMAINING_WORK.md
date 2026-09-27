@@ -6,7 +6,7 @@ Checkpoint: 28 September 2026 IST. This is a delivery checklist, not a completio
 
 - P01–P04 are technically integrated on private GitHub main and verified on the Mac: genuine FIRMS ingestion, PostGIS, API/map, OSM/WorldCover context, events/sites, history and transparent rules with UNKNOWN outcomes. Main has 245 unique observations across three pilot regions. Rules are computed from data; they are uncalibrated heuristics, not learned probabilities or confirmed source truth.
 - The integrated checks passed: 106 unit/API plus 15 PostGIS tests, lint, formatting, TypeScript and production build. Real provider reads and the built browser flow were checked. Five evidence defects were corrected. Human domain review remains pending.
-- P05's reconciliation handoff is now at `a243d29`: reviewed main is an ancestor and the implementer reports updated evidence/grouping/history/review gates. The integrator inspected the ref/history/handoff only during submission preparation; independent acceptance, current CI confirmation and Mac verification remain. No reportable learned-model performance exists. Predictions from that learned model are not served in the current app.
+- P05 is integrated in `main` (28 September, at the owner's request): 14-region NOAA-20 archive from 30 December 2025, frozen facility-aware case set (10,318 cases; 10,035 history-eligible), evidence policy, blind review page with personal reviewer accounts, and an XGBoost/baseline/calibration pipeline. Reviewed and verified on the Mac in an isolated clone. Zero human labels, so no reportable learned-model performance; learned predictions are not served in the app.
 - FIRMS access is working and stored privately. The team leader reports a working Earthdata login. Registered identity is Git_Push_Pray / Bittu Mandal / 144613 / INDIAN INSTITUTE OF INFORMATION TECHNOLOGY, PUNE. On 27 September around 22:19 IST, signed-in team details, submission access and form limits were verified. No separate nomination badge appeared; draft and submitted-idea lists were empty. See `SUBMISSION_DETAILS.md`.
 
 ## A. Before the national idea submission — priority now
@@ -26,31 +26,32 @@ The [official PS table](https://www.sih.gov.in/sih2026PS), checked at approximat
 
 Do **not** wait for P06–P08 or hundreds of reviews before preparing/submitting the idea. At current evidence level, say: “Real-data GIS, contextual rules and history demonstrated; labelling and training pipeline built on a separate branch; model not yet independently evaluated.” Do not imply that an unevaluated learned model is already operating. Selection remains the organizers' decision.
 
-## B. P05 technical reconciliation — returned, acceptance pending
+## B. P05 technical reconciliation — done, independent acceptance pending
 
 Full contract and paste prompt: P05-RECONCILE.md.
 
-On 28 September, the integrator fetched `a243d29` and confirmed main `52c91f0` is an ancestor. The implementer reports completion of the work below, 146 unit/API + 18 integration checks, new versioned cases/features and zero real reviews. These boxes remain unchecked until independent acceptance; do not ask the implementer to redo the task from its older prompt. New CI and actual code/data behaviour have not been verified in this submission-only checkpoint.
+Done (27–28 September). The review was carried out in two passes, **not **; mark these accepted only after independent check on its return.
 
-- [ ] Merge reviewed main into P05 in its separate checkout; preserve both histories and all review fixes.
-- [ ] Check derived P05 features, weak labels and NOAA-20 SP/NRT handling against the corrected rules, coverage and solar safeguards.
-- [ ] Regenerate affected context/features/artifacts with versioned provenance; preserve prior manifests, frozen splits and any submitted reviews. Report changed counts rather than inheriting old totals.
-- [ ] Close or explicitly gate missing historical windows, genuinely independent evidence, geographic uncertainty/licence records, large-facility grouping and the held-out-region protocol.
-- [ ] Check review blinding, append-only decisions and disagreement handling. Do not treat a shared token and self-entered name as production authentication.
-- [ ] Audit the added ML dependencies and licences; rerun relevant tests and CI on the reconciled branch.
-- [ ] Push P05 with reproducible commands and a precise technical/human blocker list. No change to canonical main.
+- [x] Merge reviewed main into P05 in its separate checkout; preserve both histories and all review fixes. (`09fb77b`; later `1e3bb0a` merged the same way)
+- [x] Check derived P05 features, weak labels and NOAA-20 SP/NRT handling against the corrected rules, coverage and solar safeguards.
+- [x] Regenerate affected context/features/artifacts with versioned provenance; preserve prior manifests, frozen splits and any submitted reviews. Report changed counts rather than inheriting old totals.
+- [x] Close or explicitly gate missing historical windows (NOAA-20 SP backfilled from 30 December 2025, ADR-022: 10,035 of 10,318 cases eligible), genuinely independent evidence, geographic uncertainty/licence records, large-facility grouping and the held-out-region protocol.
+- [x] Check review blinding, append-only decisions and disagreement handling; replace the shared token and typed names with personal accounts (ADR-023). Still not production authentication (P07).
+- [x] Audit the added ML dependencies and licences; rerun relevant tests and CI.
+- [x] Push P05 with reproducible commands and a precise technical/human blocker list.
 
-“Everything except people is finished” is too broad while those documented technical/scientific gaps remain. Completing the engineering pipeline does not complete the P05 evidence gate.
+## C. P05 independent review, Mac verification and integration
 
-## C. P05 independent review, Mac verification and integration — the integrator
+Done on 28 September at the owner's request while the integrator was out of usage:
 
-- [ ] Independently inspect the reconciled code and reproduce material scientific/operational checks; address actionable findings.
-- [ ] Verify frozen ML installation and XGBoost/OpenMP on this Mac. Linux CI does not cover it.
-- [ ] Exercise migrations 0006 and 0007 on a disposable database with existing-data preservation and a usable backup/restore path; then apply to main only after acceptance.
-- [ ] Import the exact hash-verified saved data needed for the accepted scope; reuse existing downloads. Verify counts, deduplication, case manifests and dependency versions.
-- [ ] Run browser/API review checks with test fixtures, including token failures, two reviewers, disagreement and immutable records. Do not create fake real labels during testing.
-- [ ] Configure a private annotation token without printing or committing it. Decide how real reviewers reach the app: localhost works only on that computer; remote access needs a suitable private service.
-- [ ] Integrate accepted P05, run affected main checks and CI, and update the runnable handoff. Technical integration may finish before human labels, with model evaluation explicitly pending.
+- [x] Independent inspection (separate review pass, two passes; all findings fixed and re-tested). Independent acceptance remains open.
+- [x] Frozen ML installation and XGBoost/OpenMP verified on the owner's Mac in an isolated clone: XGBoost needs `brew install libomp`; afterwards 148 unit/API + 19 PostGIS tests, lint, format, typecheck and build passed.
+- [x] Migrations 0006–0008 exercised on disposable databases (including refusal to downgrade once accounts exist) and on the workspace database after a backup.
+- [x] Saved hash-verified data imported in the workspace (P05 files, backfill, OSM, registry); counts and fingerprints recorded.
+- [x] Browser/API review checks with fixtures only: personal sign-in, wrong and rotated tokens, deactivation, two blind reviewers, stale saves, adjudication, drafts, superseded set, phone width. No real labels.
+- [x] Reviewer access: personal accounts replace the private shared token. Remaining decision for the owner: localhost works only on that computer; remote reviewers need a private HTTPS service.
+- [x] Integrated into `main` with CI; runnable handoff updated.
+- [ ] On the Mac: `git pull`, back up the database, `make migrate` (0005 → 0008), then import the saved P05 files if the Mac should host reviews. The implementer did not touch the Mac checkout or database.
 
 ## D. Human evidence and genuine model evaluation
 
@@ -63,7 +64,7 @@ On 28 September, the integrator fetched `a243d29` and confirmed main `52c91f0` i
 - [ ] Check unseen-site, known-site-future and held-out-region claims separately; verify temporal and facility-level leakage controls. Report results only for the supported population.
 - [ ] Produce reproducible model/data cards and an acceptance decision. Keep a simpler baseline if the learned model does not justify adoption. Do not call industrial-source classification accident detection; a corroborated incident case study needs separate evidence.
 
-The **~460 reviews / ~15 person-hours**, and **~1,100 reviews** for its promotion sample gate, are rough estimates based on rule-derived class mix and two minutes per review. They exclude some onboarding, investigation and disagreement effort. They guarantee neither enough usable labels nor a promoted model. Current code minimums (20 training, 5 validation and 10 test examples per class to run a report; 30 test examples per class plus a positive paired gain interval for promotion) are engineering gates, not proof of adequate scientific precision. Review support and uncertainty may demand more.
+Current estimates after the backfill, **~480 reviews / ~16–24 person-hours** to report results and **~1,100 reviews** for its promotion sample gate, are rough estimates based on rule-derived class mix and two to three minutes per review. They exclude some onboarding, investigation and disagreement effort. They guarantee neither enough usable labels nor a promoted model. Current code minimums (20 training, 5 validation and 10 test examples per class to run a report; 30 test examples per class plus a positive paired gain interval for promotion) are engineering gates, not proof of adequate scientific precision. Review support and uncertainty may demand more.
 
 P05's current learner is **binary industrial versus non-industrial**. It is not yet a validated multi-class classifier for forest/agricultural fires, mines, flares and accidents. There is no scientifically defensible accuracy figure to put in the submission today.
 

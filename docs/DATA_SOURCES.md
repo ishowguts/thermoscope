@@ -37,3 +37,15 @@ Neither source labels a heat source. OSM tags propose what a mapped feature is; 
 ## P04 history retrieval
 
 NASA FIRMS Area API, `VIIRS_NOAA20_NRT`, 1 July–21 September 2026, bounded to the three pilot regions in five-day windows, with the same citation and handling as P02 (provider/product/collection kept; key server-side only; raw CSVs ignored by Git). Standard-processing (SP) archive data before 1 July is available from FIRMS but not yet ingested; it needs its own parser and NRT/SP reconciliation.
+
+## P05 sources — 27 September 2026 IST
+
+| Source | Exact use | Terms and handling |
+|---|---|---|
+| NASA FIRMS Area API, `VIIRS_NOAA20_SP` (standard processing, collection 2) | 30 March–30 June 2026 for all 14 pilot regions, plus the history backfill 30 December 2025–29 March 2026 (252 requests, 27,363 rows, 27 September 2026 UTC; ADR-022, `docs/inventory/p05-backfill-files.csv`), 5-day bounded requests from the owner's bridge shell (key piped to curl, never printed, each response checked for it) | Same citation and handling as the NRT product. The SP file's `type` column (NASA's presumed vegetation fire / volcano / other static land source / offshore) is stored as a retrospective field only: not a label and not a model input. SP and NRT periods do not overlap; overlapping days are refused by the event builder. |
+| NASA FIRMS Area API, `VIIRS_NOAA20_NRT` | 1 July–25 September 2026 for the 11 new regions | As P02/P04. |
+| OpenStreetMap via Overpass | Same fixed `osm-industrial-v1` query for the 11 new regions | As P03 (ODbL, attribution shown). |
+| [WRI Global Power Plant Database v1.3.0](https://github.com/wri/global-power-plant-database) | Registry evidence: 388 Indian thermal plants (253 coal, 68 gas, 17 oil, 50 biomass), shown to reviewers within 5 km and used as SILVER "industrial" corroboration within 1.5 km | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); attribution "Global Power Plant Database v1.3.0, World Resources Institute and partners". File `output_database/global_power_plant_database.csv` from the repository's `master` branch, 11,973,385 bytes, SHA-256 `4b1f93e0fd93664f18684d9b05d0a52ed9658c6a8cf0d21ff2520791379ba7fc`, retrieved 27 September 2026 09:40 UTC and re-verified 10:33 UTC; `DATABASE_VERSION` reads 1.3.0. The database has been frozen since 2021, so newer plants are missing and some coordinates are approximate. Raw copy in ignored `local/registry/` and `local/objects`. |
+| Reviewer-cited sources (NASA Worldview imagery, Sentinel-2/Landsat viewers, satellite basemaps, official or company pages, news) | Evidence items stored with each review under `evidence-policy-v1`: link, source type, date, reviewer-entered licence/terms note and how the type was established | Only these fields are stored; no third-party imagery or documents are copied. OSM, the registry, WorldCover and FIRMS links are recorded but never count as independent. Check each source's terms before publishing a case pack. |
+
+No independent incident reports have been collected. Registry corroboration says a thermal power plant is nearby; it does not prove the detection came from it.

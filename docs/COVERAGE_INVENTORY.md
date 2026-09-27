@@ -137,3 +137,108 @@ The first sidecar files recorded row counts one too low (the CSVs have no traili
 51 files, 232 records.
 
 </details>
+
+## P05 retrieval and case set — 27 September 2026 IST
+
+**FIRMS.** 464 bounded 5-day requests, retrieved 27 September 09:26–09:56 UTC from the owner's bridge shell (FIRMS key read inside that shell and piped to curl, never printed; each response checked for it), all HTTP 200, saved with `.meta.json` sidecars in the Mac's ignored `local/p05-fetch/raw/` and imported as historical replay: 464 runs `SUCCEEDED`, 23,746 rows accepted and inserted, 0 quarantined. Per-file names, windows, times, row counts and SHA-256 hashes: [`docs/inventory/p05-firms-files.csv`](inventory/p05-firms-files.csv) (hashes re-verified against the files before import). NOAA-20 SP covers 30 March–30 June 2026 for all 14 regions; NRT covers 1 July–25 September for the 11 new regions (the three original regions keep their P04 NRT history to 21 September, plus the P02 Jamnagar samples).
+
+| Region | SP files / rows | NRT files / rows | Inserted | Event input | Episodes | Sites |
+|---|---|---|---|---|---|---|
+| haldia | 19 / 161 | 18 / 34 | 195 | 195 | 61 | 14 |
+| jamnagar | 19 / 643 | P04 (1 Jul–21 Sep) | 643 | 749 | 298 | 159 |
+| jharia | 19 / 3,793 | 18 / 1,086 | 4,879 | 4,879 | 1,061 | 145 |
+| kgbasin | 19 / 517 | 18 / 1 | 518 | 518 | 347 | 298 |
+| korba | 19 / 1,868 | 18 / 169 | 2,037 | 2,037 | 962 | 621 |
+| mathura | 19 / 287 | 18 / 10 | 297 | 297 | 213 | 183 |
+| mumbai | 19 / 1,399 | 18 / 77 | 1,476 | 1,476 | 817 | 605 |
+| panipat | 19 / 1,653 | 18 / 55 | 1,708 | 1,708 | 1,103 | 956 |
+| paradip | 19 / 124 | 18 / 3 | 127 | 127 | 93 | 78 |
+| punjab | 19 / 4,375 | P04 (1 Jul–21 Sep) | 4,375 | 4,400 | 3,009 | 2,372 |
+| simlipal | 19 / 16 | 18 / 0 | 16 | 16 | 14 | 13 |
+| singrauli | 19 / 2,187 | P04 (1 Jul–21 Sep) | 2,187 | 2,301 | 1,161 | 759 |
+| talcher | 19 / 4,119 | 18 / 620 | 4,739 | 4,739 | 946 | 428 |
+| vizag | 19 / 470 | 18 / 79 | 549 | 549 | 233 | 143 |
+| **Total** | 266 / 21,612 | 198 / 2,134 | **23,746** | **23,991** | **10,318** | **6,774** |
+
+Episodes and sites are `event-site-v2` (7-day maximum episode, ADR-019), NOAA-20 SP and NRT together. Detections are not confirmed fires; a request with no rows does not prove there was no fire (cloud, overpass timing, detection limits).
+
+**OSM.** One `osm-industrial-v1` response per new region, fetched 27 September 09:57–10:04 UTC through the bridge shell (main server; the `maps.mail.ru` mirror for Haldia and Paradip when the main server was busy), saved in `local/context-fetch/` with sidecars.
+
+| Region | OSM base time (UTC) | Elements | Facilities | Import | Content SHA-256 |
+|---|---|---|---|---|---|
+| haldia | 2026-09-27 10:01 | 568 | 568 | SUCCEEDED | `76099dc7b242373c7fc5f46975791cb90bb315abb81b3b76666cbff6f9393864` |
+| jharia | 2026-09-27 09:56 | 734 | 734 | SUCCEEDED | `20575b19d44f9b91cd76368fa884a10f875e8a5d2342011194d4044ee36d6224` |
+| kgbasin | 2026-09-27 10:01 | 153 | 153 | SUCCEEDED | `8c9198050e504f065be1c599b2e271cab9133c19b0631912347fa3852a1686f5` |
+| korba | 2026-09-27 09:56 | 159 | 159 | SUCCEEDED | `8bd89c59a79ed3c70a54df2b919fbdd2bb2f4f24cab36cc6a43064eaf9427ed4` |
+| mathura | 2026-09-27 09:57 | 396 | 396 | SUCCEEDED | `6358670ad259319ef4335f5565ed70916fbffca9000d57aa6f7098d50d0ebb83` |
+| mumbai | 2026-09-27 10:02 | 1,702 | 1,700 | PARTIAL: 2 unclosed area ways quarantined (way/1390642253, way/1390642260) | `c05ab80c07660010d5b96d9ae9387d294d7ba62afec883585219ccd43c5585d3` |
+| panipat | 2026-09-27 09:57 | 602 | 602 | SUCCEEDED | `ebc88cf98b2af1a87a1b747d058917fca7ff116b9a3c346142b3152599c70a80` |
+| paradip | 2026-09-27 09:56 | 70 | 70 | SUCCEEDED | `328b81f4b1c8a6433af020222bbbb50f3071eca529494f8e923d5ec06fbf46c3` |
+| simlipal | 2026-09-27 10:01 | 8 | 8 | SUCCEEDED | `1b9705674f802ed2642daed041152e6ecf6c3a9f6d9e4122c0ecfb4b77d43b0a` |
+| talcher | 2026-09-27 09:56 | 97 | 97 | SUCCEEDED | `98f04c1c17a4db62649159357b0757d28357d36945106459d5ef173d3aa6b3d1` |
+| vizag | 2026-09-27 09:58 | 434 | 434 | SUCCEEDED | `8326a6bc6c0a32412119bec518eb47a589a47b6c418e71e910ab1a474edd6a2d` |
+
+OSM coverage differs sharply by region (Simlipal 8 features, Mumbai 1,700); mapped absence is not evidence of absence.
+
+**Registry.** WRI GPPD v1.3.0: 388 Indian thermal plants imported (see DATA_SOURCES). No case in Singrauli or Talcher lies within 1.5 km of a registered plant, so their detections get no registry corroboration.
+
+**Case set `p05-pilot-v1`.** 10,318 cases (one per episode) in 2,462 site groups; TRAIN 6,481 / VALIDATION 2,050 / TEST 1,787 cases; manifest SHA-256 recorded in the database and in `local/objects/manifests/`. Group sizes make some regional splits uneven (Talcher VALIDATION has 5 cases because a single 215-case group carried TRAIN past its share). Land cover was summarized for every representative detection. **No reviewed labels exist yet.**
+
+## P05 reconciliation — history eligibility and case set v2 (27 September 2026, 23:30 IST)
+
+No new retrieval. `p05-pilot-v2` (facility-aware grouping, 2,437 groups) supersedes the frozen `p05-pilot-v1` for review and evaluation; both contain the same 10,318 episodes. Under `history-eligibility-v1` a case is usable only when at least 80 % of the 90 days before it were retrieved. Because the saved archive starts on 30 March 2026, the first eligible episode is on 10 June.
+
+| Region | Cases | History-complete | of which TEST |
+|---|---|---|---|
+| haldia | 61 | 25 | 0 |
+| jamnagar | 298 | 90 | 29 |
+| jharia | 1,061 | 478 | 35 |
+| kgbasin | 347 | 8 | 2 |
+| korba | 962 | 96 | 2 |
+| mathura | 213 | 23 | 1 |
+| mumbai | 817 | 75 | 10 |
+| panipat | 1,103 | 67 | 38 |
+| paradip | 93 | 5 | 3 |
+| punjab | 3,009 | 83 | 5 |
+| simlipal | 14 | 0 | 0 |
+| singrauli | 1,161 | 110 | 3 |
+| talcher | 946 | 220 | 19 |
+| vizag | 233 | 41 | 2 |
+| **Total** | **10,318** | **1,321** | **149** |
+
+Complete windows for every case need NOAA-20 SP from **30 December 2025 to 29 March 2026**: 18 bounded five-day requests per region, 252 in total (fetched on 27–28 September; see below). 663 cases lie within 2 km of their region's OSM extract boundary, so their OSM inputs are missing rather than zero.
+
+## NOAA-20 SP history backfill (28 September 2026 IST, ADR-022)
+
+| Item | Coverage |
+|---|---|
+| Product | `VIIRS_NOAA20_SP` (NASA FIRMS area API, standard processing) |
+| Dates | 30 December 2025 – 29 March 2026, 18 five-day windows per region |
+| Regions | All 14 pilot regions (same bounding boxes as the rest of P05) |
+| Files | 252 CSVs with `.meta.json` sidecars in the Mac's ignored `local/p05-backfill/raw/`; hashes, received times and row counts in `docs/inventory/p05-backfill-files.csv` (SHA-256 `af18a0d0…1358`) |
+| Retrieved | 27 September 2026 18:09–18:22 UTC (23:39–23:52 IST), HTTP 200 for every request; 13 windows returned no detections |
+| Rows | 27,363 detections (Jharia 7,248, Talcher 7,052, Korba 3,709, Mumbai 3,019, Simlipal 1,557, Singrauli 1,456, Visakhapatnam 855, Paradip 832, Jamnagar 793, Haldia 411, Panipat 304, KG basin 79, Punjab 29, Mathura 19) |
+| Import | 252 runs `SUCCEEDED` as historical replay, 0 quarantined rows |
+
+The saved NOAA-20 archive now covers every day from 30 December 2025 to 26 September 2026 for every region (SP to 30 June, NRT from 1 July); the `features` guard found no missing day for `p05-pilot-v2`. History eligibility under `case-features-v4`:
+
+| Region | Cases | History-complete | of which TEST |
+|---|---|---|---|
+| haldia | 61 | 61 | 2 |
+| jamnagar | 298 | 294 | 59 |
+| jharia | 1,061 | 1,059 | 110 |
+| kgbasin | 347 | 342 | 63 |
+| korba | 962 | 910 | 129 |
+| mathura | 213 | 208 | 41 |
+| mumbai | 817 | 781 | 151 |
+| panipat | 1,103 | 1,072 | 198 |
+| paradip | 93 | 90 | 18 |
+| punjab | 3,009 | 2,914 | 508 |
+| simlipal | 14 | 13 | 1 |
+| singrauli | 1,161 | 1,140 | 223 |
+| talcher | 946 | 924 | 175 |
+| vizag | 233 | 227 | 40 |
+| **Total** | **10,318** | **10,035** | **1,718** |
+
+The 283 remaining cases lie within 750 m of their region's bounding box, so part of their history circle was never fetched; they stay set aside.
+

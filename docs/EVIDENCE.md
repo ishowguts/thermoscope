@@ -22,7 +22,7 @@ This ledger records completed verification, not planned checks. Large audit down
 
 ## Not yet performed
 
-Programmatic Earthdata download, model training/evaluation, cloud deployment, offline basemap replay, cloud restore and SIH submission remain unperformed. Completed P01/P02 local ingestion, storage, API and browser evidence is recorded below.
+Programmatic Earthdata download, model evaluation on reviewed labels (the P05 pipeline exists and refuses to report without them), cloud deployment, offline basemap replay, cloud restore and SIH submission remain unperformed. Completed P01/P02 local ingestion, storage, API and browser evidence is recorded below.
 
 ## FIRMS access check — 26 September 2026
 
@@ -153,6 +153,32 @@ Base `31f0498` (P03 handoff). Commits `9c1f788` (history and rules), `8357770` (
 
 Open items: thresholds need calibration on reviewed cases (P05); 180-day windows are ~50% covered until the SP archive is added; the Mac run; the P03 hard-case review.
 
+## P05 implementation and verification — 27 September 2026 IST (branch `p05-model`)
+
+Base `f7e99dc` (P04 handoff). Commits `c17a888` (data, events v2, batch jobs), `ad882aa` (labels, API, model pipeline), `f62d15c` (review page), `956b352` (documentation), plus the handoff commit. Linux x86_64 cloud workspace, Python 3.13.15, PostGIS 18-3.6 (digest-pinned), Node 24.21.0. **Not run on the owner's Mac.**
+
+| Check | Observed result | Scope / limitation |
+|---|---|---|
+| FIRMS retrieval | 464 of 464 bounded requests HTTP 200 (SP 30 Mar–30 Jun for 14 regions; NRT 1 Jul–25 Sep for 11 new regions), 09:26–09:56 UTC; key read inside the bridge shell, piped to curl, never printed; each response checked for it | Hashes in `docs/inventory/p05-firms-files.csv`, re-verified before import |
+| FIRMS import | 464 runs `SUCCEEDED`, 23,746 inserted, 0 quarantined | Historical replay; availability unknown by design |
+| OSM | 11 new snapshots imported: 10 `SUCCEEDED`, Mumbai `PARTIAL` (2 unclosed area ways quarantined) | Two Mumbai attempts were truncated at 50 s and rejected before a 160 s attempt succeeded |
+| GPPD | `global_power_plant_database.csv` v1.3.0, SHA-256 `4b1f93e0…ba7fc`; re-downloaded at 10:33 UTC with the identical hash; 388 Indian thermal plants imported | Registry dated 2021 |
+| Events `event-site-v2` | 14 regions, 23,991 inputs → 10,318 episodes, 6,774 sites in 53 s (earlier attempt hit the 2 s API timeout; fixed with batch jobs and an indexed pair query) | Groupings, not confirmed fires |
+| Case set `p05-pilot-v1` | 10,318 cases, 2,462 site groups, TRAIN 6,481 / VALIDATION 2,050 / TEST 1,787; **0 site groups span two splits**; manifest SHA-256 `fd1e627a…27068` | An earlier build (same splits, TEST-first review order) was deleted before any review and rebuilt with the interleaved order |
+| Land cover and features | WorldCover summaries for all 10,318 representatives (0 failed); features for 10,318 cases in 9 m 27 s; 9,628 rule labels, 240 registry corroborations | Singrauli and Talcher have no case within 1.5 km of a registered plant |
+| Training, reviewed policy | `INSUFFICIENT_LABELS` (model `xgb-source-binary-v2`, version `683e2e9b…`, artifact manifest `0dcd4217…`): 33 industrial / 0 non-industrial training cases, 0 GOLD test cases | Correct refusal |
+| Training, `--dry-run-weak` | `DRY_RUN_NOT_EVIDENCE` (`252331fd…`, `2362e323…`), 42 inputs, 6,103 train / 1,892 validation / 1,659 test rule-labelled cases; model card and model list withhold scores; metrics carry a do-not-quote notice | Circular by design: proves only that the pipeline runs. The earlier v1 runs (45 inputs) were deleted after the review below |
+| Independent review (separate read-only pass, no prior context) | No high-severity defect. Fixed: coverage and 180-day history inputs acted as a date proxy (removed; model v2); validation gate now needs 5 cases per class; agreement kappa now ignores "cannot decide" pairs; dry-run scores no longer stored in the model list; known-site-future now has support minimums and test-eligible labels; OSM provider follows the data mode. Documented: truncated early history, reviewers see rule inputs, blindness needs reviewers to avoid the Observations page, 2 km site grouping | Re-tested: 135 unit/API, 13 PostGIS; GitHub Actions run 36314415781 on `f24a910`: success |
+| `make check` | Ruff clean; **133 passed** (new: split/group, review order, tiers, kappa, review validation, token/CORS, feature leakage guard, metrics, abstention, calibration, group bootstrap, dry-run card, synthetic end-to-end training); Prettier; `tsc`; Vite build (review page is a separate 14 kB chunk) | Map chunk still over 500 kB |
+| `make integration` | **13 passed** (new: registry import idempotency/conflict, case-set freeze and manifest hash, features, blind case payload, two reviews → disagreement → adjudication, duplicate and excess reviews refused, summary, training gate and artifacts; NRT+SP one stream and overlap refusal) | Disposable databases |
+| GitHub Actions | Run 36313643893 on `956b352`: **completed / success** — clean Ubuntu install including `make install-ml` (xgboost-cpu 3.4.1), 133 unit/API and 13 PostGIS tests passed with none skipped | Linux only |
+| Saved-data importer | Scratch database: 2 FIRMS files + 1 OSM response imported, second run inserted 0 | Then dropped |
+| API timing (10,318 cases) | Queue 0.12–0.16 s, summary 0.06 s, blind case 0.04 s | Local workspace |
+| Browser (headless Chromium) | Review page at 1440 px and 390 px: queue, blind evidence, detections table, validation message, wrong token → "The review token was not accepted.", navigation back to observations; no page errors (only the expected 401 and SwiftShader WebGL warnings). Screenshots outside Git: `review-case-wide.png` `6c78caeb…`, `review-case-phone.png` `e1fb009d…`, `review-case2-wide.png` `5a594031…`, `review-validate-wide.png` `c25e67e0…` | **No review was submitted to the real case set**: labels come only from people |
+| Fixes found during verification | Aborted requests shown as errors under React StrictMode; date suffix comma; queue wording; review order starved training/validation until all TEST cases were done (now interleaved); registry re-import with a different file under the same version (now refused); queue matched reviewer names case-sensitively | All re-checked |
+
+Open items: human reviews (about 460 to report, 1,100 to promote — rough estimate from rule labels); a Mac run (XGBoost may need `libomp`); a held-out-region protocol.
+
 ## 27 September 2026 — independent P03/P04 review and Mac integration
 
 The `p04-history` head `f7e99dc` was reviewed in an isolated worktree/database. Baseline 104 unit/API + 11 PostGIS checks passed on Mac. Five independently reproduced failing regression cases exposed missing-history, product/partial coverage, OSM boundary and raster-window defects; these were fixed. A sixth regression and actual source inspection exposed a solar photovoltaic feature treated as industrial heat evidence. Review commit `329b716` contains the corrections; details in internal record P03-P04-REVIEW.
@@ -186,6 +212,33 @@ Current refs were fetched and the branch task/code/history inspected. Main and o
 - Current task/known-limit inspection identified outstanding history, independent evidence, geographic protocol, label metadata and Mac ML gates; these are explicit in internal record P05-RECONCILE. No newly reproduced code defect or final review verdict is claimed.
 - This checkpoint changes documentation only. No application tests repeated; no database, secrets, paid resource, public release or submission changed. Complete pending-work list: `REMAINING_WORK.md`.
 
+## P05 reconciliation — 27 September 2026, 22:10–23:45 IST (branch `p05-model`)
+
+Fetched `origin/main` `52c91f0` and merged it into `p05-model` (`09fb77b`; no rebase). Linux x86_64 cloud workspace, Python 3.13.15, uv 0.12.19, Node 24.21.0, digest-pinned PostGIS 18-3.6; workspace database migrated 0006 → 0007. **Not run on the owner's Mac; Mac and OpenMP verification is separate.** No FIRMS or Overpass request was made; inputs were the saved, hash-verified objects.
+
+| Check | Observed result | Scope / limitation |
+|---|---|---|
+| Before fingerprints | `p05-pilot-v1`: 10,318 cases, manifest `fd1e627a…27068`, episodes `bf37782d…3ef7f`, splits `43b03d45…7870a`, `case-features-v1` 10,318 rows (9,628 rule, 240 registry labels), `landcover-summary-v1` 10,430, 23,991 observations, 0 reviews | Workspace database |
+| Grouping audit of v1 | 14 mapped facilities, 360 nearby cases, in two or three splits (Jayant Mine, Visakhapatnam Steel Plant, Tetulmari coal mine, Reliance Refinery TEST/TRAIN, Block-B coal mine, Amlohri, Balaram, Vadinar Refinery, Kusmunda, Gangavaram port, Haldia Dock Complex, …) | 500 m of a mapped area or point; 1.5 km of a registered plant |
+| Land cover | `landcover-summary-v2` for all 10,318 representatives, 0 failed, 2 m 31 s; v1 rows retained | Public WorldCover tiles |
+| Events | Case-set build reused the same 14 event runs (identical input hashes); 20 runs in total, none rewritten | `event-site-v2` |
+| New case set | `p05-pilot-v2`, `facility-aware-v1`, 2,437 groups, TRAIN 6,488 / VALIDATION 2,060 / TEST 1,770, manifest `94eebb40…7cb0`, episodes `bf37782d…` (same), splits `05992876…4e505`; 460 episodes sit in a different split than in v1; supersession and reason recorded in its manifest | Decided before any review or score |
+| Grouping audit of v2 | 0 facilities (areas, points or plants) cross splits: `safe_for_unseen_site_claims: true` | Same rule as above |
+| v1 after | Fingerprint identical to before; refuses reviews (409) and training | Frozen by triggers |
+| Features | `case-features-v3`: 10,318 rows in 2 m 44 s, 4,376 rule labels, 240 registry, **1,321 history-complete**, 663 without full OSM coverage (inputs missing), 22 with non-thermal power in the pixel area, 0 NRT detections superseded by SP; feature sha `b453edc6…c5620`. `case-features-v2` (intermediate) retained | First run took over 15 minutes; an indexed pre-filter fixed it (same results) |
+| Rule-label change v1 → v3 | Agricultural 5,147 → 139, vegetation 2,387 → 2,191, industrial 2,094 → 2,046; new abstentions: `INSUFFICIENT_RECURRENCE_COVERAGE` 4,593, `CONTEXT_UNAVAILABLE_AS_OF` 663, `NON_THERMAL_POWER_CONTEXT` 21 | Heuristic labels, never test truth |
+| Training, reviewed | `INSUFFICIENT_LABELS`, `xgb-source-binary-v4` (`c0f6129c…`, manifest `419cdcf0…`); eligible support train 11/0, validation 77/0, test 0/0 | Correct refusal |
+| Training, dry run | `DRY_RUN_NOT_EVIDENCE` (`91e3032d…`, `f0eb0e9a…`); 43 inputs; history policy excluded 8,997 cases; held-out-region and known-site-future executed; card and model list carry no scores | Execution check only; never quote |
+| `make check` | Ruff clean; **146 passed**; Prettier; `tsc`; Vite build | Map chunk warning unchanged |
+| `make integration` | **18 passed** (new: SP/NRT stream and overlap, supersession, grouping audit, fingerprints, evidence records, database immutability and case-insensitive uniqueness, history gate) | Disposable databases |
+| Browser (headless Chromium, fixture database only) | Review-only server: no Observations link; wrong token refused; reviewer A and B saved blind (B saw nothing of A); disagreement sent to adjudicator C, who saw both answers and evidence without names; summary 1 GOLD test label, kappa over 1 pair; superseded set flagged; form fits 390 px and 1440 px. Only console entry: the expected 401. Screenshots outside Git: `4-adjudication.png` `c1d29874…`, `1-form-filled.png` `bd1b8670…`, `6-superseded.png` `40568db8…`, `7-review-only-root.png` `d92276f9…`, `8-form-phone.png` `c1390936…` | Fixture reviewers named "Fixture …"; the fixture database was dropped afterwards. **No review was written to a real case set.** |
+| Fixture CLI | `train` → `INSUFFICIENT_LABELS` with one GOLD test label but no history-eligible case; superseded set refused; `UPDATE label_cases` and `DELETE FROM label_reviews` rejected by the triggers | Same fixture database |
+| ML dependency audit | `pip-audit` 2.9.0 against the locked ML packages (scikit-learn 1.9.1, xgboost/xgboost-cpu 3.4.1, SciPy 1.18.1, joblib 1.6.0, threadpoolctl 3.7.0, cloudpickle 3.1.2, narwhals 2.26.0) with both the PyPI and OSV services: **no known vulnerabilities** at 17:06 UTC. Evidence file outside Git `ml-audit-evidence.txt` `cd8f073b…` | Point-in-time; licences in `ENVIRONMENT.md` |
+| Independent reviews | Two separate read-only passes without prior context: no high-severity defect. Fixed after review: evidence host tricks (trailing dot, FIRMS/Overpass mirrors, raw GPPD, short-link/Esri basemaps), undated or thermal-only Worldview links, second reviewer's location ignored, operational SP precedence, whole-day SP precedence from partial SP runs, `days_since_last` reaching the archive start, training without a grouping audit, supersession race, solar counted in rule reasons | Re-tested |
+| Secret scan | Workspace database password, Postgres password and both review tokens: zero matches in every commit | The Mac's FIRMS key never entered the workspace |
+
+Open: human reviews; NOAA-20 SP backfill 2025-12-30 → 2026-03-29 for complete history; Mac verification; independent acceptance.
+
 ## 27 September 2026 approximately 22:19 IST — authenticated portal inspection
 
 User completed login personally. Browser read-only navigation verified team identity and six registered members, empty Draft Idea List and View Submitted Idea tables, SIH26162 / NTRO / Software / Disaster Management at 140/500, and the matching blank submission form. No separate nomination-status badge appeared; successful form access is the evidence, not a claim to have audited the SPOC backend.
@@ -211,3 +264,27 @@ New files were prepared outside Git in workspace `output/submission/`, leaving t
 Final PDF SHA-256: `e2de296e47bd71f2ee7bf6bb4a83f7d2473189b6ba695d41c8a1455489991d94`. PPTX: `d5d2deda29451836e49ac5477d1411ed51584d520b3730df45ed5183a2e2e3b0`. Detailed manifest: `SUBMISSION_PACKAGE.md`; local builder, finalization receipt, renders and package verification: workspace `.review/submission-build/`. A speaking/video script exists; a recorded video does not. No portal entry/upload/save/submission or public publication occurred. Application tests were not repeated for unchanged code.
 
 Checkpoint fetch found P05 advanced from `579aaf3` to `a243d29`. `git merge-base --is-ancestor 52c91f0 origin/p05-model` returned success. Its handoff reports 146 unit/API + 18 integration tests, migrations through 0007 and zero real reviews. Only ref/history/handoff inspected here; fresh CI confirmation, independent acceptance and Mac verification are still pending. Submission claims were not upgraded from this report.
+
+## 27–28 September 2026, 23:35–04:30 IST — P05 backfill, reviewer accounts, independent review, Mac check and integration
+
+At the owner's request ("can you solve these"). Linux x86_64 cloud workspace (Python 3.13.15, uv 0.12.19, Node 24.21.0, digest-pinned PostGIS 18-3.6) plus the owner's Mac through the desktop bridge. The Mac's main checkout and database were not changed; Mac tests ran in an isolated clone under ignored `local/p05-verify/`.
+
+| Check | Observed result | Scope / limitation |
+|---|---|---|
+| SP history backfill | 252 of 252 FIRMS area requests (`VIIRS_NOAA20_SP`, 14 regions × 18 five-day windows, 30 December 2025–29 March 2026), HTTP 200, VIIRS header, key absent from every response and saved file; 27,363 rows; retrieved 27 September 18:09–18:22 UTC. Inventory `docs/inventory/p05-backfill-files.csv` (`af18a0d0…1358`) | Key read from the Mac's `.env` inside the bridge shell and passed to curl on stdin; never printed |
+| Import | Workspace database backed up first (`pre-backfill-*.dump`); `import_saved.py`: 252 `SUCCEEDED`, 27,363 inserted, 0 problems, 49 s; observations 23,991 → 51,354 | Historical replay |
+| Archive continuity | New `features` guard: every UTC day from 90 days before each region's first case to its last case has a qualifying NOAA-20 run; 14 regions, 0 missing days | 15 s query |
+| Features | `case-features-v4` (unchanged code, ADR-022): 10,318 rows in 2 m 51 s; **10,035 history-complete** (was 1,321); 283 set aside, all within 750 m of a region edge; 9,131 rule labels (were 4,376; rules can now use recurrence), 240 registry; sha `b178a6e0…b6454`. v3 rows unchanged; recomputing v4 reports 10,318 unchanged | Rule labels are dry-run only |
+| Fingerprints | `p05-pilot-v1` and `p05-pilot-v2` manifests, episodes and splits identical to before (`fd1e627a…`, `94eebb40…`, `bf37782d…`, `43b03d45…`, `05992876…`); 0 reviews | Frozen sets untouched |
+| Training, reviewed | `INSUFFICIENT_LABELS` (`2e4fa530…`, manifest `f2d7fcbc…`); support train 34/0, validation 191/0 (registry SILVER only), test 0/0 | Correct refusal |
+| Training, dry run | `DRY_RUN_NOT_EVIDENCE` (`2153b3e0…`, `5b2bcbe3…`); rule-labelled support 5,733 / 1,884 / 1,535; card carries no scores; 283 cases set aside | Execution check only; never quote |
+| Review estimate | Eligible TEST pool 1,718 (rule proxy ≈ 168 industrial, 1,359 non-industrial, 191 unknown); ≈ 480 reviews to report, ≈ 1,100 to promote along the frozen queue | Rough; rules are not truth |
+| Reviewer accounts | Migration 0008 applied to the workspace database after a backup (0 accounts); per-person tokens (256-bit, SHA-256 stored, owner-only files, never printed); identity from `Authorization: Bearer`; adjudicator role; view log; voiding; rotation/reactivation; refusal to downgrade with accounts | Team-pilot sign-in, not SSO |
+| Independent review, pass 1 | Separate read-only pass on `origin/main..p05-model`: no auth bypass or token leak; **high**: a blind review could become the deciding adjudication; **medium**: reviewers could infer agreement from progress counters; archive version could be computed without the backfill; low: stale card text, no remedy for misused tokens, downgrade losing account links, token loss on file-write failure, script safety wording, sign-in edge cases. All fixed in `f36d292` | Probes on disposable databases |
+| Independent review, pass 2 | The same pass verified `f36d292`: finding 1 fixed without a new agreement channel; new medium: after a void, an adjudicator who had read both reviews could review the case "blind"; archive guard checked only the earliest run; low: HTTP summary still public on default servers, CLI error mapping, stored-token clearing on any failure, in-place migration edit. All fixed in `0e49e82` | Re-tested |
+| `make check` (workspace) | Ruff clean; **148 passed**; Prettier; `tsc`; Vite build | Map chunk warning unchanged |
+| `make integration` (workspace) | **19 passed** (new: personal accounts end to end, stale-role refusal, adjudication-view log, voiding, archive guard, CLI token files, downgrade refusal) | Disposable databases |
+| Browser (headless Chromium, fixture database only) | Sign-in rejects wrong/malformed tokens; four accounts open the same case: A and B save, adjudicator C's blind save is refused (409) and the page reloads the adjudication view with an empty form, D (non-adjudicator) is refused and never sees the disagreement; C adjudicates without names; reviewers see only their own progress ("Hidden" label totals); expired sign-in keeps the draft for the same person only; deactivation signs the page out; superseded set flagged; no horizontal scroll at 390 px; no token in page HTML. Screenshots outside Git: `shots2/2-rejected.png` `8fb203b0…`, `shots2/7-queue-phone.png` `537a789c…`, `shots3/1-stale-reloaded.png` `4ebde50f…` | Fixture reviewers only; fixture database dropped. **No review was written to a real case set** |
+| Mac, before `libomp` | Isolated clone at `f36d292`: install and ML install passed; XGBoost failed to load (`@rpath/libomp.dylib` not found; rpath only `/opt/homebrew/opt/libomp/lib`; Homebrew present, libomp not installed; scikit-learn's bundled libomp not used); `make check` 146 passed / 2 failed (both XGBoost); `make integration` 19 passed. Report `report-1-before-libomp.txt` `579307df…` | macOS 26.3 arm64 |
+| Mac, after `brew install libomp` (23.1.2, by the owner) | Isolated clone at `e2b2739`: both XGBoost probes passed; `make check` **148 passed** plus lint, format, typecheck and build; `make integration` **19 passed**. Report `report.txt` `8e168bf6…` | Secrets redacted; none present |
+| Secret scan | Every commit and both Mac reports checked for the FIRMS key, Postgres and database passwords (on the Mac) and the workspace database password (in the cloud): zero matches | Tokens for fixtures were deleted after use |

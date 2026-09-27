@@ -1,0 +1,986 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
+import {
+  SOURCE_LABEL_TEXT,
+  SUBTYPE_TEXT,
+  confidence,
+  distance,
+  facilityType,
+  landCoverMix,
+  measurement,
+  CaseChanged,
+  SignInRequired,
+  postReview,
+  readApi,
+  readAsReviewer,
+  utc,
+} from "./api";
+import type {
+  CaseSet,
+  QueueItem,
+  ReviewCase,
+  ReviewQueue,
+  Reviewer,
+} from "./api";
+
+// Kept for this browser tab only (cleared when the tab closes or on sign-out).
+const TOKEN_KEY = "thermoscope.reviewer-token";
+
+type EvidenceRow = {
+  url: string;
+  kind: string;
+  observed_on: string;
+  licence: string;
+};
+
+type Draft = {
+  source_label: string;
+  industrial_subtype: string;
+  certainty: string;
+  source_location: string;
+  evidence: EvidenceRow[];
+  notes: string;
+};
+
+const EMPTY_ROW: EvidenceRow = {
+  url: "",
+  kind: "",
+  observed_on: "",
+  licence: "",
+};
+
+const EMPTY_DRAFT: Draft = {
+  source_label: "",
+  industrial_subtype: "",
+  certainty: "",
+  source_location: "",
+  evidence: [EMPTY_ROW],
+  notes: "",
+};
+
+const LOCATION_TEXT: Record<string, string> = {
+  INSIDE_PIXEL_AREA: "Inside the approximate pixel area",
+  NEARBY_ONLY: "Nearby, outside the pixel area",
+  UNSURE: "Not sure where exactly",
+};
+
+const EVIDENCE_TEXT: Record<string, string> = {
+  DATED_IMAGERY: "Dated satellite or aerial imagery",
+  OFFICIAL_OR_COMPANY: "Official, regulator or company source",
+  NEWS_REPORT: "News report",
+  UNDATED_BASEMAP: "Undated basemap (Google, Bing…)",
+  PROJECT_INPUT: "OSM, power-plant registry, WorldCover or FIRMS",
+  OTHER: "Other",
+};
+
+// Mirrors the server's classification; the server decides and rejects mismatches.
+function suggestKind(url: string): { kind: string; date: string } | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
+  if (
+    /(^|\.)(openstreetmap\.org|osm\.org|modaps\.eosdis\.nasa\.gov|esa-worldcover\.org|wri\.org)$/.test(
+      host,
+    ) ||
+    host.includes("overpass") ||
+    parsed.pathname.toLowerCase().includes("/overpass") ||
+    ((host === "github.com" || host === "raw.githubusercontent.com") &&
+      parsed.pathname.startsWith("/wri/global-power-plant-database"))
+  )
+    return { kind: "PROJECT_INPUT", date: "" };
+  if (
+    host.startsWith("maps.google.") ||
+    host === "earth.google.com" ||
+    /(^|\.)(goo\.gl|arcgis\.com|arcgisonline\.com|wikimapia\.org|maps\.apple\.com)$/.test(
+      host,
+    ) ||
+    ((host.includes("google.") || host.includes("bing.com")) &&
+      parsed.pathname.startsWith("/maps"))
+  )
+    return { kind: "UNDATED_BASEMAP", date: "" };
+  if (host.endsWith("worldview.earthdata.nasa.gov"))
+    return {
+      kind: "DATED_IMAGERY",
+      date: (parsed.searchParams.get("t") ?? "").slice(0, 10),
+    };
+  return null;
+}
+
+function independent(row: EvidenceRow): boolean {
+  return (
+    row.kind === "OFFICIAL_OR_COMPANY" ||
+    (row.kind === "DATED_IMAGERY" && row.observed_on !== "")
+  );
+}
+
+const SPLIT_TEXT: Record<string, string> = {
+  TEST: "Test case · needs two independent reviews",
+  VALIDATION: "Validation case · one review",
+  TRAIN: "Training case · one review",
+};
+
+function day(value: string): string {
+  return utc(value).replace(/,? \d\d:\d\d UTC$/, "");
+}
+
+function QueueRow({
+  item,
+  active,
+  onOpen,
+}: {
+  item: QueueItem;
+  active: boolean;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <button
+      className={`observation-row ${active ? "active" : ""}`}
+      aria-pressed={active}
+      onClick={() => onOpen(item.case_id)}
+    >
+      <span className="row-top">
+        <strong>{item.region_id}</strong>
+        <span>
+          {item.role === "ADJUDICATOR"
+            ? "Adjudicate"
+            : item.split.toLowerCase()}
+        </span>
+      </span>
+      <span>{day(item.as_of)}</span>
+      <span className="row-bottom">
+        {item.reviews} of {item.needs} review{item.needs > 1 ? "s" : ""}
+        {item.history_complete ? "" : " · history incomplete"}{" "}
+        <span>{item.case_id.slice(0, 8)}</span>
+      </span>
+    </button>
+  );
+}
+
+function CaseEvidence({ data }: { data: ReviewCase }) {
+  const land = data.land_cover;
+  const frp = data.observations
+    .map((o) => o.frp_mw)
+    .filter((v): v is number => v != null);
+  return (
+    <div className="review-evidence">
+      <div className="panel-heading">
+        <h2>
+          {data.region_id} · {day(data.started_at)}
+          {day(data.started_at) !== day(data.as_of)
+            ? ` – ${day(data.as_of)}`
+            : ""}
+        </h2>
+        <span className="tag">{SPLIT_TEXT[data.split] ?? data.split}</span>
+      </div>
+      <div className="review-grid">
+        <section>
+          <h3>Where and when</h3>
+          <dl>
+            <dt>Location</dt>
+            <dd>
+              {data.location.latitude.toFixed(5)},{" "}
+              {data.location.longitude.toFixed(5)}
+            </dd>
+            <dt>Approximate pixel radius</dt>
+            <dd>{distance(data.location.support_radius_m)}</dd>
+            <dt>Detections</dt>
+            <dd>
+              {data.observations.length} over{" "}
+              {new Set(data.observations.map((o) => o.acquired_at)).size}{" "}
+              overpass(es)
+            </dd>
+            <dt>Strongest FRP</dt>
+            <dd>{measurement(frp.length ? Math.max(...frp) : null, "MW")}</dd>
+          </dl>
+          <h3>Look at the place yourself</h3>
+          <ul className="link-list">
+            {data.links.map((link) => (
+              <li key={link.url}>
+                <a href={link.url} target="_blank" rel="noreferrer">
+                  {link.label} ↗
+                </a>
+              </li>
+            ))}
+          </ul>
+          <p className="help">
+            Copy the link you relied on into the evidence box. Imagery on the
+            event date is the strongest evidence; a map label alone is weak.
+          </p>
+        </section>
+        <section>
+          <h3>Mapped features (OpenStreetMap)</h3>
+          {data.osm_snapshot ? (
+            data.mapped_features.length ? (
+              <ul className="candidates">
+                {data.mapped_features.slice(0, 8).map((c) => (
+                  <li key={`${c.osm_type}/${c.osm_id}`}>
+                    <span>
+                      <strong>{facilityType(c.facility_type)}</strong>
+                      {c.power_source ? ` · ${c.power_source}` : ""}
+                      {c.name ? ` · ${c.name}` : ""}
+                    </span>
+                    <span className="where">
+                      {c.contains_pixel_centre
+                        ? "Pixel centre inside"
+                        : distance(c.distance_m)}
+                    </span>
+                    <small>
+                      OSM {c.primary_tag} ·{" "}
+                      <a href={c.osm_url} target="_blank" rel="noreferrer">
+                        {c.osm_type}/{c.osm_id}
+                      </a>
+                    </small>
+                    {!c.thermal_source_candidate && (
+                      <small>
+                        Mapped as solar, wind or water power: not a combustion
+                        source.
+                      </small>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="help">No mapped industrial feature within 2 km.</p>
+            )
+          ) : (
+            <p className="help">No OSM snapshot covers this place.</p>
+          )}
+          <h3>Registry records within 5 km</h3>
+          {data.registry_records_within_5km.length ? (
+            <ul className="candidates">
+              {data.registry_records_within_5km.map((r) => (
+                <li key={`${r.source}/${r.record_id}`}>
+                  <span>
+                    <strong>{r.name ?? r.record_id}</strong>
+                    {r.fuel ? ` · ${r.fuel}` : ""}
+                    {r.capacity_mw ? ` · ${Math.round(r.capacity_mw)} MW` : ""}
+                  </span>
+                  <span className="where">{distance(r.distance_m)}</span>
+                  <small>{r.attribution}</small>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="help">
+              None in the power-plant registry (WRI GPPD v1.3.0).
+            </p>
+          )}
+          <h3>Land cover (ESA WorldCover 2021)</h3>
+          <p className="land-mix">
+            {land
+              ? `Pixel area: ${landCoverMix(land.support)} · 1 km: ${landCoverMix(land.context)}`
+              : "Not extracted for this detection."}
+          </p>
+        </section>
+      </div>
+      <details>
+        <summary>All {data.observations.length} detections (UTC)</summary>
+        <table className="detections">
+          <thead>
+            <tr>
+              <th>Acquired</th>
+              <th>FRP</th>
+              <th>Day/night</th>
+              <th>Confidence</th>
+              <th>Lat, lon</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.observations.map((o) => (
+              <tr key={o.id}>
+                <td>{utc(o.acquired_at)}</td>
+                <td>{measurement(o.frp_mw, "MW")}</td>
+                <td>{o.daynight === "D" ? "Day" : "Night"}</td>
+                <td>{confidence(o.confidence)}</td>
+                <td>
+                  {o.lat.toFixed(4)}, {o.lon.toFixed(4)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
+      {data.adjudication && (
+        <div className="notice" role="status">
+          <strong>Two reviewers disagreed.</strong> As adjudicator, weigh their
+          evidence and your own, then decide.
+          <ul>
+            {data.adjudication.earlier_reviews.map((r, i) => (
+              <li key={i}>
+                {SOURCE_LABEL_TEXT[r.source_label] ?? r.source_label} (
+                {r.certainty.toLowerCase()} certainty)
+                {(r.evidence.items ?? []).map((item) => (
+                  <span key={item.url}>
+                    {" "}
+                    ·{" "}
+                    <a href={item.url} target="_blank" rel="noreferrer">
+                      {EVIDENCE_TEXT[item.kind] ?? "evidence"}
+                      {item.observed_on ? ` ${item.observed_on}` : ""} ↗
+                    </a>
+                  </span>
+                ))}
+                {r.notes ? ` · “${r.notes}”` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewForm({
+  data,
+  reviewer,
+  token,
+  initial,
+  onDraft,
+  onSaved,
+  onStale,
+  onExpired,
+}: {
+  data: ReviewCase;
+  reviewer: Reviewer;
+  token: string;
+  initial: Draft | undefined;
+  onDraft: (draft: Draft | null) => void;
+  onSaved: (message: string) => void;
+  onStale: () => void;
+  onExpired: () => void;
+}) {
+  const [draft, setDraftState] = useState<Draft>(initial ?? EMPTY_DRAFT);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const setDraft = (next: Draft) => {
+    setDraftState(next);
+    onDraft(next);
+  };
+  const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
+  const rows = draft.evidence.filter((row) => row.url.trim() !== "");
+  const setRow = (index: number, patch: Partial<EvidenceRow>) => {
+    const next = draft.evidence.map((row, i) => {
+      if (i !== index) return row;
+      const merged = { ...row, ...patch };
+      if (patch.url !== undefined) {
+        const hint = suggestKind(patch.url.trim());
+        if (hint) {
+          merged.kind = hint.kind;
+          if (hint.date) merged.observed_on = hint.date;
+        }
+      }
+      return merged;
+    });
+    set({ evidence: next });
+  };
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    if (!draft.source_label || !draft.certainty) {
+      setError("Choose a source and a certainty.");
+      return;
+    }
+    if (draft.source_label !== "UNRESOLVED" && rows.length === 0) {
+      setError("Add at least one evidence link, or choose “Cannot decide”.");
+      return;
+    }
+    if (rows.some((r) => !/^https?:\/\//.test(r.url.trim()) || !r.kind)) {
+      setError(
+        "Every link needs to start with http:// or https:// and have a type.",
+      );
+      return;
+    }
+    if (draft.source_label !== "UNRESOLVED" && !draft.source_location) {
+      setError("Say where the source is relative to the pixel area.");
+      return;
+    }
+    if (rows.some((r) => r.kind === "DATED_IMAGERY" && !r.observed_on)) {
+      setError("Add the date of the imagery you looked at.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const saved = await postReview(data.case_set_id, token, {
+        case_id: data.case_id,
+        expected_role: data.your_role,
+        source_label: draft.source_label,
+        industrial_subtype:
+          draft.source_label === "INDUSTRIAL" && draft.industrial_subtype
+            ? draft.industrial_subtype
+            : null,
+        certainty: draft.certainty,
+        source_location:
+          draft.source_label === "UNRESOLVED"
+            ? draft.source_location || null
+            : draft.source_location,
+        evidence: rows.map((r) => ({
+          url: r.url.trim(),
+          kind: r.kind,
+          observed_on: r.observed_on || null,
+          licence: r.licence.trim() || null,
+        })),
+        notes: draft.notes.trim() || null,
+      });
+      setDraftState(EMPTY_DRAFT);
+      onDraft(null);
+      const tier =
+        saved.review_tier === "GOLD-eligible"
+          ? "It can count towards test truth."
+          : "It cannot count as test truth: that needs dated imagery or an official source, the source inside the pixel area and at least medium certainty.";
+      onSaved(
+        (saved.role === "ADJUDICATOR"
+          ? "Adjudication saved. "
+          : "Review saved. The next case is open. ") + tier,
+      );
+    } catch (reason) {
+      if (reason instanceof CaseChanged) onStale();
+      else if (reason instanceof SignInRequired) onExpired();
+      else setError((reason as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="review-form" onSubmit={submit}>
+      <h3>Your decision</h3>
+      <fieldset>
+        <legend>Most likely heat source</legend>
+        {data.labels.map((label) => (
+          <label key={label} className="choice">
+            <input
+              type="radio"
+              name="source"
+              value={label}
+              checked={draft.source_label === label}
+              onChange={() => set({ source_label: label })}
+            />
+            {SOURCE_LABEL_TEXT[label] ?? label}
+          </label>
+        ))}
+      </fieldset>
+      {draft.source_label === "INDUSTRIAL" && (
+        <label>
+          Industrial type (optional)
+          <select
+            value={draft.industrial_subtype}
+            onChange={(e) => set({ industrial_subtype: e.target.value })}
+          >
+            <option value="">Not specified</option>
+            {data.subtypes.map((s) => (
+              <option key={s} value={s}>
+                {SUBTYPE_TEXT[s] ?? s}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <fieldset>
+        <legend>Certainty</legend>
+        {["HIGH", "MEDIUM", "LOW"].map((level) => (
+          <label key={level} className="choice inline">
+            <input
+              type="radio"
+              name="certainty"
+              value={level}
+              checked={draft.certainty === level}
+              onChange={() => set({ certainty: level })}
+            />
+            {level.charAt(0) + level.slice(1).toLowerCase()}
+          </label>
+        ))}
+      </fieldset>
+      <fieldset>
+        <legend>Where is the source you identified?</legend>
+        {data.evidence_policy.source_locations.map((where) => (
+          <label key={where} className="choice">
+            <input
+              type="radio"
+              name="location"
+              value={where}
+              checked={draft.source_location === where}
+              onChange={() => set({ source_location: where })}
+            />
+            {LOCATION_TEXT[where] ?? where}
+          </label>
+        ))}
+        <p className="help">
+          Pixel area: within {distance(data.location.support_radius_m)} of the
+          location shown.
+        </p>
+      </fieldset>
+      <fieldset className="evidence-rows">
+        <legend>Evidence you relied on (up to five)</legend>
+        {draft.evidence.map((row, index) => (
+          <div className="evidence-row" key={index}>
+            <input
+              aria-label={`Evidence link ${index + 1}`}
+              value={row.url}
+              onChange={(e) => setRow(index, { url: e.target.value })}
+              placeholder="https://…"
+            />
+            <select
+              aria-label={`Evidence type ${index + 1}`}
+              value={row.kind}
+              onChange={(e) => setRow(index, { kind: e.target.value })}
+            >
+              <option value="">Type of source…</option>
+              {data.evidence_policy.kinds.map((kind) => (
+                <option key={kind} value={kind}>
+                  {EVIDENCE_TEXT[kind] ?? kind}
+                </option>
+              ))}
+            </select>
+            <div className="evidence-meta">
+              <input
+                type="date"
+                aria-label={`Date of evidence ${index + 1}`}
+                value={row.observed_on}
+                onChange={(e) => setRow(index, { observed_on: e.target.value })}
+              />
+              <input
+                aria-label={`Licence or terms ${index + 1}`}
+                value={row.licence}
+                maxLength={120}
+                onChange={(e) => setRow(index, { licence: e.target.value })}
+                placeholder="Licence / terms"
+              />
+            </div>
+            {row.url.trim() && row.kind && (
+              <small className={independent(row) ? "ok" : "weak"}>
+                {independent(row)
+                  ? "Independent evidence if its date is near the episode."
+                  : "Supports your view, but cannot decide a test label."}
+              </small>
+            )}
+          </div>
+        ))}
+        {draft.evidence.length < 5 && (
+          <button
+            type="button"
+            className="quiet"
+            onClick={() => set({ evidence: [...draft.evidence, EMPTY_ROW] })}
+          >
+            + Add another source
+          </button>
+        )}
+        <p className="help">
+          Labels record the kind of source only, never whether an accident
+          happened. The Worldview thermal layer is the same NASA detection;
+          judge the true-colour image.
+        </p>
+      </fieldset>
+      <label>
+        Notes (optional)
+        <textarea
+          rows={2}
+          maxLength={2000}
+          value={draft.notes}
+          onChange={(e) => set({ notes: e.target.value })}
+        />
+      </label>
+      {error && (
+        <div className="notice error" role="alert">
+          {error}
+        </div>
+      )}
+      <button className="primary" disabled={saving}>
+        {saving ? "Saving…" : `Save review as ${reviewer.name}`}
+      </button>
+      <p className="help">
+        Reviews are append-only and recorded under your account. Save only what
+        the evidence supports.
+      </p>
+    </form>
+  );
+}
+
+export function ReviewPage() {
+  const [sets, setSets] = useState<CaseSet[] | null>(null);
+  const [enabled, setEnabled] = useState(false);
+  const [setName, setSetName] = useState("");
+  const [tokenInput, setTokenInput] = useState("");
+  const [token, setToken] = useState("");
+  const [reviewer, setReviewer] = useState<Reviewer | null>(null);
+  const [signingIn, setSigningIn] = useState(false);
+  const [queue, setQueue] = useState<ReviewQueue | null>(null);
+  const [caseId, setCaseId] = useState<string | null>(null);
+  const [caseTick, setCaseTick] = useState(0);
+  // Unsaved drafts per case and role, kept while switching cases, after a reload and across an
+  // expired sign-in by the same person; cleared on "Sign out" or when someone else signs in.
+  const drafts = useRef<{
+    owner: string;
+    byCase: Record<string, { role: string; draft: Draft }>;
+  }>({ owner: "", byCase: {} });
+  const keepCase = useRef<string | null>(null);
+  const [data, setData] = useState<ReviewCase | null>(null);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    readApi<{ case_sets: CaseSet[]; review_enabled: boolean }>(
+      "/api/v1/annotation/case-sets",
+      controller.signal,
+    )
+      .then((result) => {
+        setSets(result.case_sets);
+        setEnabled(result.review_enabled);
+        if (result.case_sets.length) setSetName(result.case_sets[0].name);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted)
+          setError("Case sets could not be loaded.");
+      });
+    return () => controller.abort();
+  }, []);
+
+  const signOut = useCallback((reason = "", keepDrafts = false) => {
+    setToken("");
+    setReviewer(null);
+    setQueue(null);
+    setCaseId(null);
+    setData(null);
+    setMessage("");
+    setError(reason);
+    if (!keepDrafts) drafts.current = { owner: "", byCase: {} };
+    try {
+      sessionStorage.removeItem(TOKEN_KEY);
+    } catch {
+      /* storage unavailable: nothing to clear */
+    }
+  }, []);
+  const expired = useCallback(
+    () =>
+      signOut(
+        "Your sign-in is no longer valid (token rotated or account deactivated). Sign in again with your current token; unsaved drafts come back if it is your account.",
+        true,
+      ),
+    [signOut],
+  );
+
+  const signIn = useCallback(async (candidate: string, remember: boolean) => {
+    setSigningIn(true);
+    setError("");
+    try {
+      const who = await readAsReviewer<Reviewer>(
+        "/api/v1/annotation/me",
+        candidate,
+      );
+      if (drafts.current.owner !== who.name)
+        drafts.current = { owner: who.name, byCase: {} };
+      setToken(candidate);
+      setReviewer(who);
+      setTokenInput("");
+      if (remember) {
+        try {
+          sessionStorage.setItem(TOKEN_KEY, candidate);
+        } catch {
+          /* storage unavailable: stay signed in for this page only */
+        }
+      }
+    } catch (reason) {
+      if (!remember && reason instanceof SignInRequired) {
+        try {
+          sessionStorage.removeItem(TOKEN_KEY); // a stored token that no longer works
+        } catch {
+          /* storage unavailable: nothing to clear */
+        }
+      }
+      setError(
+        reason instanceof SignInRequired
+          ? "That token was not accepted. Use the personal token the project owner gave you."
+          : (reason as Error).message,
+      );
+    } finally {
+      setSigningIn(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let saved: string | null = null;
+    try {
+      saved = sessionStorage.getItem(TOKEN_KEY);
+    } catch {
+      saved = null;
+    }
+    if (saved) void signIn(saved, false);
+  }, [signIn]);
+
+  useEffect(() => {
+    if (!setName || !reviewer || !token) return;
+    const controller = new AbortController();
+    const base = `/api/v1/annotation/${encodeURIComponent(setName)}`;
+    readAsReviewer<ReviewQueue>(
+      `${base}/queue?limit=30`,
+      token,
+      controller.signal,
+    )
+      .then((q) => {
+        setQueue(q);
+        const items = [...q.adjudication, ...q.review];
+        const keep = keepCase.current;
+        keepCase.current = null;
+        if (keep && items.some((i) => i.case_id === keep)) setCaseId(keep);
+        else setCaseId(items[0] ? items[0].case_id : null);
+      })
+      .catch((reason) => {
+        if (controller.signal.aborted) return;
+        if (reason instanceof SignInRequired) expired();
+        else setError("The review queue could not be loaded.");
+      });
+    return () => controller.abort();
+  }, [setName, reviewer, token, tick, expired]);
+
+  useEffect(() => {
+    setData(null);
+    if (!caseId || !setName || !token) return;
+    const controller = new AbortController();
+    readAsReviewer<ReviewCase>(
+      `/api/v1/annotation/${encodeURIComponent(setName)}/cases/${caseId}`,
+      token,
+      controller.signal,
+    )
+      .then(setData)
+      .catch((reason) => {
+        if (controller.signal.aborted) return;
+        if (reason instanceof SignInRequired) expired();
+        else setError("This case could not be loaded.");
+      });
+    return () => controller.abort();
+  }, [caseId, caseTick, setName, token, expired]);
+
+  const saved = useCallback((text: string) => {
+    setMessage(text);
+    setTick((v) => v + 1);
+  }, []);
+
+  // Someone else saved this case first: reload the queue and the case, keeping this case open
+  // (with the draft) if it still needs this reviewer.
+  const stale = useCallback(() => {
+    keepCase.current = caseId;
+    setMessage(
+      "This case changed while you had it open (someone else saved first), so nothing was saved. It has been reloaded; check it again before saving.",
+    );
+    setTick((v) => v + 1);
+    setCaseTick((v) => v + 1);
+  }, [caseId]);
+
+  return (
+    <>
+      <header>
+        <span>BLIND LABEL REVIEW</span>
+        <span className="tag">Human evidence only</span>
+      </header>
+      <section className="intro">
+        <div>
+          <div className="eyebrow">P05 · Reviewed labels</div>
+          <h1>What caused this heat?</h1>
+          <p>
+            Decide from imagery and records. Rules and model scores stay hidden
+            so they cannot sway you.
+          </p>
+        </div>
+      </section>
+      {error && (
+        <div className="notice error" role="alert">
+          {error}
+        </div>
+      )}
+      {sets && !enabled && (
+        <div className="notice" role="status">
+          No reviewer accounts exist on this server yet. The project owner adds
+          one per person with <code>make ml ARGS="add-reviewer --name …"</code>{" "}
+          and passes each person their own token privately.
+        </div>
+      )}
+      {!reviewer ? (
+        <form
+          className="filters"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const candidate = tokenInput.trim();
+            if (/^tsr_[A-Za-z0-9_-]{43}$/.test(candidate))
+              void signIn(candidate, true);
+            else
+              setError(
+                "Paste the whole personal token (it starts with tsr_ and has 47 characters).",
+              );
+          }}
+        >
+          <label>
+            Case set
+            <select
+              value={setName}
+              onChange={(e) => setSetName(e.target.value)}
+              disabled={!sets?.length}
+            >
+              {sets?.map((s) => (
+                <option key={s.id} value={s.name}>
+                  {s.name} · {s.case_count.toLocaleString("en-GB")} cases
+                  {s.superseded_by ? ` · replaced by ${s.superseded_by}` : ""}
+                </option>
+              )) ?? <option>Loading…</option>}
+            </select>
+          </label>
+          <label>
+            Your personal reviewer token
+            <input
+              type="password"
+              autoComplete="off"
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+              placeholder="tsr_…"
+              maxLength={60}
+            />
+          </label>
+          <button className="primary" disabled={!setName || signingIn}>
+            {signingIn ? "Signing in…" : "Sign in"}
+          </button>
+          <span className="filter-hint">
+            Reviews are recorded under your account. Never share your token.
+          </span>
+        </form>
+      ) : (
+        <>
+          <section className="metrics" aria-label="Your progress">
+            <div>
+              <span>Your reviews in this set</span>
+              <strong>{queue?.your_reviews ?? "—"}</strong>
+              <small>Saved under your account</small>
+            </div>
+            <div>
+              <span>Cases open for review</span>
+              <strong>
+                {queue?.remaining_reviews.toLocaleString("en-GB") ?? "—"}
+              </strong>
+              <small>Test cases need two people</small>
+            </div>
+            <div>
+              <span>
+                {reviewer.can_adjudicate
+                  ? "Disagreements to adjudicate"
+                  : "Label totals and agreement"}
+              </span>
+              <strong>
+                {reviewer.can_adjudicate
+                  ? (queue?.remaining_adjudications ?? "—")
+                  : "Hidden"}
+              </strong>
+              <small>
+                {reviewer.can_adjudicate
+                  ? "On cases you did not review"
+                  : "Shown to the project owner only, so they cannot hint whether reviewers agreed"}
+              </small>
+            </div>
+          </section>
+          {queue?.superseded_by && (
+            <div className="notice error" role="alert">
+              This case set was replaced by {queue.superseded_by}; its grouping
+              is not safe for evaluation and it no longer accepts reviews.
+            </div>
+          )}
+          {message && (
+            <div className="notice" role="status">
+              {message}
+            </div>
+          )}
+          <section className="review-workspace" aria-label="Review workbench">
+            <div className="list-panel">
+              <div className="panel-heading">
+                <h2>
+                  Queue for {reviewer.name}
+                  {reviewer.can_adjudicate ? " · adjudicator" : ""}
+                </h2>
+                <button className="quiet" onClick={() => signOut()}>
+                  Sign out
+                </button>
+              </div>
+              <div className="observations">
+                {queue?.adjudication.map((item) => (
+                  <QueueRow
+                    key={item.case_id}
+                    item={item}
+                    active={item.case_id === caseId}
+                    onOpen={setCaseId}
+                  />
+                ))}
+                {queue?.review.map((item) => (
+                  <QueueRow
+                    key={item.case_id}
+                    item={item}
+                    active={item.case_id === caseId}
+                    onOpen={setCaseId}
+                  />
+                ))}
+                {queue &&
+                  !queue.review.length &&
+                  !queue.adjudication.length && (
+                    <p className="empty-list">Nothing left for you here.</p>
+                  )}
+              </div>
+              <p className="help queue-note">
+                {queue
+                  ? `${queue.remaining_reviews.toLocaleString("en-GB")} cases open for review. Test cases need two people.`
+                  : "Loading queue…"}
+              </p>
+            </div>
+            <div className="map-panel">
+              {data ? (
+                <CaseEvidence data={data} />
+              ) : (
+                <div className="map-placeholder">
+                  {caseId ? "Loading case…" : "Choose a case from the queue."}
+                </div>
+              )}
+            </div>
+            {data && (
+              <div className="list-panel form-panel">
+                {data.your_role ? (
+                  <ReviewForm
+                    key={`${data.case_id}-${data.your_role}`}
+                    data={data}
+                    reviewer={reviewer}
+                    token={token}
+                    initial={
+                      drafts.current.byCase[data.case_id]?.role ===
+                      data.your_role
+                        ? drafts.current.byCase[data.case_id].draft
+                        : undefined
+                    }
+                    onDraft={(draft) => {
+                      const cases = drafts.current.byCase;
+                      if (draft && data.your_role)
+                        cases[data.case_id] = { role: data.your_role, draft };
+                      else delete cases[data.case_id];
+                    }}
+                    onSaved={saved}
+                    onStale={stale}
+                    onExpired={() => {
+                      keepCase.current = data.case_id;
+                      expired();
+                    }}
+                  />
+                ) : (
+                  <p className="empty-list">
+                    Nothing more is needed from you on this case. Choose another
+                    from the queue.
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
+          <footer>
+            <p>{data?.guidance}</p>
+            <span>ThermoScope · Git_Push_Pray</span>
+          </footer>
+        </>
+      )}
+    </>
+  );
+}

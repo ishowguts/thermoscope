@@ -87,6 +87,33 @@ export async function readApi<T>(url: string, signal: AbortSignal): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+/** Thrown when the personal reviewer token is missing, wrong, rotated or deactivated. */
+export class SignInRequired extends Error {}
+
+/** Reads a reviewer-only endpoint with the signed-in reviewer's personal token. */
+export async function readAsReviewer<T>(
+  url: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  const response = await fetch(url, {
+    signal,
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 401)
+    throw new SignInRequired("Your reviewer sign-in was not accepted.");
+  if (!response.ok)
+    throw new Error(
+      "Stored data is unavailable. Check the local API and database, then reload.",
+    );
+  return response.json() as Promise<T>;
+}
+
+export type Reviewer = { name: string; can_adjudicate: boolean };
+
+/** Thrown when the case changed after it was opened (someone else saved first). */
+export class CaseChanged extends Error {}
+
 export function utc(value: string | null | undefined): string {
   if (!value) return "Not available";
   return (
@@ -389,4 +416,166 @@ const LABELS: Record<string, string> = {
 
 export function ruleLabel(value: string | undefined | null): string {
   return value ? (LABELS[value] ?? value) : "";
+}
+
+export type CaseSet = {
+  id: string;
+  name: string;
+  data_mode: DataMode;
+  case_count: number;
+  manifest_sha256: string;
+  created_at: string;
+  reviews: number;
+  grouping: string;
+  superseded_by: string | null;
+};
+export type QueueItem = {
+  case_id: string;
+  split: "TRAIN" | "VALIDATION" | "TEST";
+  region_id: string;
+  as_of: string;
+  reviews: number;
+  needs: number;
+  history_complete: boolean;
+  role: "REVIEWER" | "ADJUDICATOR";
+};
+export type ReviewQueue = {
+  case_set_id: string;
+  reviewer: string;
+  can_adjudicate: boolean;
+  superseded_by: string | null;
+  queue_order: string;
+  adjudication: QueueItem[];
+  review: QueueItem[];
+  your_reviews: number;
+  remaining_reviews: number;
+  /** Shown to adjudicators only. */
+  remaining_adjudications: number | null;
+};
+export type EarlierReview = {
+  role: string;
+  source_label: string;
+  industrial_subtype: string | null;
+  certainty: string;
+  evidence: {
+    items?: {
+      url: string;
+      kind: string;
+      observed_on: string | null;
+      independent: boolean;
+    }[];
+  };
+  evidence_date: string | null;
+  notes: string | null;
+  reviewed_at: string;
+};
+export type RegistryRecord = {
+  source: string;
+  record_id: string;
+  name: string | null;
+  category: string;
+  fuel: string | null;
+  capacity_mw: number | null;
+  distance_m: number;
+  attribution: string;
+};
+export type ReviewCase = {
+  case_id: string;
+  case_set_id: string;
+  split: string;
+  region_id: string;
+  review_slots: number;
+  as_of: string;
+  started_at: string;
+  location: { longitude: number; latitude: number; support_radius_m: number };
+  observations: {
+    id: string;
+    acquired_at: string;
+    lon: number;
+    lat: number;
+    frp_mw: number | null;
+    daynight: string;
+    confidence: string | null;
+    product: string;
+  }[];
+  mapped_features: FacilityCandidate[];
+  osm_snapshot: { osm_base_at: string; attribution: string } | null;
+  registry_records_within_5km: RegistryRecord[];
+  land_cover: LandCover | null;
+  links: { label: string; url: string }[];
+  blind: boolean;
+  /** Hidden (null) from anyone who reviewed the case. */
+  reviews_recorded: number | null;
+  reviewed_by_you: boolean;
+  /** null: nothing more is needed from this person on this case. */
+  your_role: "REVIEWER" | "ADJUDICATOR" | null;
+  adjudication: { needed: boolean; earlier_reviews: EarlierReview[] } | null;
+  guidance: string;
+  evidence_policy: {
+    version: string;
+    kinds: string[];
+    independent_kinds: string[];
+    imagery_window_days: { before: number; after: number };
+    gold_needs: string;
+    source_locations: string[];
+  };
+  labels: string[];
+  subtypes: string[];
+};
+export type LabelSummary = {
+  case_set: { id: string; name: string; case_count: number };
+  label_policy: string;
+  gold_test_labels: Record<string, number>;
+  double_reviewed_cases: number;
+  binary_agreement_kappa: number | null;
+  kappa_pairs: number;
+  pending_adjudication: number;
+  reviews_total: number;
+};
+
+export const SOURCE_LABEL_TEXT: Record<string, string> = {
+  INDUSTRIAL: "Industrial heat source",
+  VEGETATION_FIRE: "Vegetation or forest fire",
+  AGRICULTURAL_BURN: "Agricultural burning",
+  OTHER: "Other, not industrial",
+  UNRESOLVED: "Cannot decide from the evidence",
+};
+export const SUBTYPE_TEXT: Record<string, string> = {
+  GAS_FLARE: "Gas flare",
+  MINING_HEAT: "Mining or coal-seam heat",
+  OTHER_PERSISTENT_HEAT: "Plant, furnace or kiln heat",
+  UNRESOLVED: "Industrial, type unclear",
+};
+
+export async function postReview(
+  caseSet: string,
+  token: string,
+  body: Record<string, unknown>,
+): Promise<{ review_id: string; role: string; review_tier: string }> {
+  const response = await fetch(
+    `/api/v1/annotation/${encodeURIComponent(caseSet)}/reviews`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    },
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 401)
+      throw new SignInRequired("Your reviewer sign-in was not accepted.");
+    if (response.status === 409 && payload.code === "CASE_CHANGED")
+      throw new CaseChanged(payload.message);
+    if (response.status === 422 && payload.code === "INVALID_QUERY")
+      throw new Error(
+        "Check the links, types, dates and notes, then try again.",
+      );
+    throw new Error(
+      payload.message ?? "The review could not be saved. Try again.",
+    );
+  }
+  return payload;
 }

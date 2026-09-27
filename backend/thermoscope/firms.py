@@ -202,6 +202,12 @@ def parse_csv(payload: bytes, window: Window, mode: DataMode, received_at: datet
                 collection_version=row["version"],
                 daynight=row["daynight"],
             )
+            if row.get("type", "") != "":
+                # Standard products carry NASA's broad source type. It is kept only as a
+                # retrospective comparison, never as a label or an operational feature.
+                if row["type"] not in {"0", "1", "2", "3"}:
+                    raise ValueError("invalid NASA type")
+                normalized["nasa_type"] = int(row["type"])
             valid.append(ParsedRow(number, obs, identity, digest(normalized), normalized, raw))
         except (ValueError, TypeError, InvalidOperation, ValidationError):
             # The raw row is preserved privately; no untrusted value enters a public error message.

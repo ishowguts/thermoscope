@@ -41,3 +41,9 @@ ingest:
 .PHONY: context
 context:
 	PYTHONPATH=backend $(UV) run --frozen python -m thermoscope.context_cli $(ARGS)
+
+.PHONY: install-ml ml
+install-ml:
+	$(UV) sync --frozen --group ml
+ml:
+	PYTHONPATH=backend $(UV) run --frozen python -m thermoscope.ml_cli $(ARGS)

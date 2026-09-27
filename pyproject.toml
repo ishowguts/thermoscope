@@ -17,6 +17,12 @@ dependencies = [
 
 [dependency-groups]
 dev = ["httpx2==2.13.1", "pytest==9.1.1", "ruff==0.16.9"]
+ml = [
+    "scikit-learn==1.9.1",
+    # Same library and import; the CPU build avoids the GPU communication stack on Linux.
+    "xgboost==3.4.1; sys_platform == 'darwin'",
+    "xgboost-cpu==3.4.1; sys_platform != 'darwin'",
+]
 
 [tool.uv]
 package = false
