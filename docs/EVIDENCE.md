@@ -175,3 +175,13 @@ The `p04-history` head `f7e99dc` was reviewed in an isolated worktree/database. 
 Main preserves original branch authorship, both merge histories, and the newer P05 handoff. P05 branch `4b76b57` is not merged or independently accepted here. Additional P05 files were left untouched; the import allowlist was narrowed after newly collected regions caused the initial inventory guard to stop before OSM/history ingestion. No data corruption occurred. The first main push was rejected because a documentation handoff advanced the remote; it was merged normally, then pushed without rewriting history.
 
 Temporary 8001/5175 review servers and the stale 5174 preview were stopped. Main 8000/5173 and PostGIS 55432 remain. Review database and local evidence retained. No SIH submission, deck modification, public release or paid resource was performed in this task.
+
+## 27 September 2026 evening IST — P05 coordination and current submission check
+
+Current refs were fetched and the branch task/code/history inspected. Main and origin/main were equal at `8adef15c56ba469b3f107e50a3449bc2a16f6324` with a clean tree. P05 had advanced to `579aaf3649306b61ddcd81ff16938c86b622d908`, including `f24a910` (date-proxy removal and tightened gates), but did not include reviewed main. The earlier 13-unpushed-commits warning is resolved.
+
+- GitHub Actions [36314415781](https://github.com/ishowguts/thermoscope/actions/runs/36314415781), job 108606292697, independently checked as completed/success: install, install-ml, check and integration. This is branch CI evidence, not a new local execution or full P05 scientific review.
+- Branch documentation reports 135 unit/API and 13 integration tests after its review fixes. Its dataset/case counts and lack of human reviews remain reported branch state, not a fresh database recount.
+- The [official SIH PS table](https://www.sih.gov.in/sih2026PS) was opened in the browser and filtered to SIH26162: **140/500**, **30 September 2026**, checked around **21:58 IST, 27 September** (clock check 16:28:13 UTC). Direct text retrieval was blocked; the actual browser table supplied this evidence. No signed-in portal constraints were inspected.
+- Current task/known-limit inspection identified outstanding history, independent evidence, geographic protocol, label metadata and Mac ML gates; these are explicit in internal record P05-RECONCILE. No newly reproduced code defect or final review verdict is claimed.
+- This checkpoint changes documentation only. No application tests repeated; no database, secrets, paid resource, public release or submission changed. Complete pending-work list: `REMAINING_WORK.md`.

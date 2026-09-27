@@ -2,7 +2,7 @@
 
 Version 2.0 | 25 September 2026 | PS SIH26162, NTRO, Software, Disaster Management
 
-Status: P01 foundation and P02 genuine observation ingestion/storage/API/map exist and pass local and clean-checkout CI checks (P02 commit `43cf2b0`). P03 context, land cover and events/sites (ADR-014 to ADR-016) and P04 history/rules (ADR-017) are technically integrated in `main`, independently reviewed with fixes and verified on macOS (ADR-020). Human domain review remains pending; P05 onward is specification only. This remains the specification for later milestones. There is no trained model, measured accuracy or deployed service yet. This specification supersedes the old ThermalGuard plan for the new build only. Read `00-BRIEFING.md` first. Source references are in `RESEARCH.md`; release candidates and validation requirements are in `../ENVIRONMENT.md`.
+Status: P01 foundation and P02 genuine observation ingestion/storage/API/map exist and pass local and clean-checkout CI checks (P02 commit `43cf2b0`). P03 context, land cover and events/sites (ADR-014 to ADR-016) and P04 history/rules (ADR-017) are technically integrated in `main`, independently reviewed with fixes and verified on macOS (ADR-020). Human domain review remains pending. P05's review/training pipeline exists on `p05-model`, pending reconciliation with main, independent acceptance and human labels; P06–P08 remain specifications. There is no independently evaluated learned model, reportable model accuracy or deployed service yet. This specification supersedes the old ThermalGuard plan for the new build only. Read `00-BRIEFING.md` first. Source references are in `RESEARCH.md`; release candidates and validation requirements are in `../ENVIRONMENT.md`.
 
 ## 1. Product decision and scope
 
