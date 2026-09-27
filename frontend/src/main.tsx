@@ -6,6 +6,7 @@ import {
   useEffect,
   useState,
 } from "react";
+import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import {
   associationSummary,
@@ -15,16 +16,21 @@ import {
   landCoverMix,
   measurement,
   readApi,
+  ruleLabel,
   utc,
 } from "./api";
 import type {
+  Assessment,
+  Basis,
   Catalog,
   DataMode,
   FacilityCollection,
   Observation,
   ObservationContext,
   ObservationPage,
+  Timeline as TimelineData,
 } from "./api";
+import { Timeline } from "./Timeline";
 const MapView = lazy(() =>
   import("./MapView").then((module) => ({ default: module.MapView })),
 );
@@ -93,6 +99,7 @@ function Context({
                 >
                   <span>
                     <strong>{facilityType(c.facility_type)}</strong>
+                    {c.power_source ? ` · ${c.power_source}` : ""}
                     {c.name ? ` · ${c.name}` : ""}
                   </span>
                   <span className="where">
@@ -110,6 +117,12 @@ function Context({
                       {c.osm_type}/{c.osm_id}
                     </a>
                   </small>
+                  {!c.thermal_source_candidate && (
+                    <small>
+                      Retained as mapped context; not used as evidence of an
+                      industrial heat source.
+                    </small>
+                  )}
                 </li>
               ))}
             </ul>
@@ -183,14 +196,158 @@ function Context({
   );
 }
 
+const PRIORITY_MARK: Record<string, string> = {
+  HIGH: "▲",
+  REVIEW: "◆",
+  MEDIUM: "●",
+  LOW: "▽",
+};
+
+function AssessmentPanel({
+  assessment,
+  timeline,
+  failed,
+  basis,
+  onBasis,
+}: {
+  assessment: Assessment | null;
+  timeline: TimelineData | null;
+  failed: boolean;
+  basis: Basis;
+  onBasis: (basis: Basis) => void;
+}) {
+  const window90 = assessment?.features.windows["90"];
+  return (
+    <section className="assessment" aria-label="Rule-based assessment">
+      <div className="assessment-heading">
+        <div>
+          <h3>Assessment</h3>
+          <p className="help">
+            Transparent rules with uncalibrated thresholds. Not a trained model
+            and not a probability.
+          </p>
+        </div>
+        <div className="mode-buttons" aria-label="History availability">
+          <button
+            aria-pressed={basis === "RETROSPECTIVE"}
+            onClick={() => onBasis("RETROSPECTIVE")}
+          >
+            Retrospective
+          </button>
+          <button
+            aria-pressed={basis === "OPERATIONAL"}
+            onClick={() => onBasis("OPERATIONAL")}
+          >
+            Operational replay
+          </button>
+        </div>
+      </div>
+      <p className="help basis-note">
+        {basis === "RETROSPECTIVE"
+          ? "Retrospective uses everything acquired before this observation, including data this application only retrieved later."
+          : "Operational replay uses only data this application had on record at the time of this observation."}
+      </p>
+      {failed && (
+        <p className="help">
+          The assessment could not be loaded. The evidence below is unaffected.
+        </p>
+      )}
+      {!failed && !assessment && <p className="help">Loading assessment…</p>}
+      {assessment && (
+        <>
+          <div className="axes">
+            <article>
+              <span className="axis-name">Likely source</span>
+              <strong>
+                {ruleLabel(assessment.source.label)}
+                {assessment.source.subtype
+                  ? ` · ${ruleLabel(assessment.source.subtype)}`
+                  : ""}
+              </strong>
+              <ul>
+                {assessment.source.reasons.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+              <small>
+                {assessment.source.rule ?? assessment.source.reason_code}
+              </small>
+            </article>
+            <article>
+              <span className="axis-name">Behaviour</span>
+              <strong>
+                {ruleLabel(assessment.behaviour.label)}
+                {assessment.behaviour.direction
+                  ? ` (${assessment.behaviour.direction.toLowerCase()})`
+                  : ""}
+              </strong>
+              <ul>
+                {assessment.behaviour.reasons.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+              <small>{assessment.behaviour.rule}</small>
+            </article>
+            <article
+              className={`priority priority-${assessment.priority.label.toLowerCase()}`}
+            >
+              <span className="axis-name">Review priority</span>
+              <strong>
+                <span aria-hidden="true">
+                  {PRIORITY_MARK[assessment.priority.label]}
+                </span>{" "}
+                {ruleLabel(assessment.priority.label)}
+              </strong>
+              {assessment.priority.note && (
+                <ul>
+                  <li>{assessment.priority.note}</li>
+                </ul>
+              )}
+              <small>
+                {assessment.priority.rule} · review order, not accident
+                likelihood
+              </small>
+            </article>
+          </div>
+          {window90 && (
+            <p className="help history-line">
+              Last 90 days within 750 m: {window90.active_days} active day(s),{" "}
+              {window90.overpasses} overpass(es); {window90.covered_days} of 90
+              days retrieved.
+              {assessment.features.excluded_after_as_of > 0 &&
+                ` ${assessment.features.excluded_after_as_of} later detection(s) ignored.`}
+            </p>
+          )}
+          {assessment.missing_or_limited.length > 0 && (
+            <ul className="limits">
+              {assessment.missing_or_limited.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+      {timeline && <Timeline data={timeline} />}
+      {assessment && (
+        <p className="help">
+          {assessment.rules_version} · {assessment.feature_version} · feature
+          snapshot {assessment.feature_snapshot_sha256.slice(0, 12)}…
+        </p>
+      )}
+    </section>
+  );
+}
+
 function Evidence({
   observation,
   context,
   contextFailed,
+  assessment,
 }: {
   observation: Observation | undefined;
   context: ObservationContext | null;
   contextFailed: boolean;
+  assessment: ReactNode;
 }) {
   if (!observation)
     return (
@@ -211,7 +368,7 @@ function Evidence({
             {observation.geometry.coordinates[0].toFixed(5)}° E
           </h2>
         </div>
-        <span className="tag">Unclassified observation</span>
+        <span className="tag">No trained classifier · rules only</span>
       </div>
       <div className="evidence-grid">
         <div>
@@ -265,6 +422,7 @@ function Evidence({
           </dl>
         </div>
       </div>
+      {assessment}
       <Context context={context} failed={contextFailed} />
       <details>
         <summary>Source receipt and integrity hash</summary>
@@ -298,6 +456,10 @@ function App() {
   const [facilities, setFacilities] = useState<FacilityCollection | null>(null);
   const [context, setContext] = useState<ObservationContext | null>(null);
   const [contextFailed, setContextFailed] = useState(false);
+  const [basis, setBasis] = useState<Basis>("RETROSPECTIVE");
+  const [assessment, setAssessment] = useState<Assessment | null>(null);
+  const [timeline, setTimeline] = useState<TimelineData | null>(null);
+  const [assessmentFailed, setAssessmentFailed] = useState(false);
   const select = useCallback((id: string) => setSelectedId(id), []);
 
   useEffect(() => {
@@ -424,6 +586,38 @@ function App() {
       controller.abort();
     };
   }, [selectedId, mode]);
+
+  useEffect(() => {
+    setAssessment(null);
+    setTimeline(null);
+    setAssessmentFailed(false);
+    if (!selectedId) return;
+    const controller = new AbortController();
+    let active = true;
+    const query = new URLSearchParams({ data_mode: mode, basis });
+    Promise.all([
+      readApi<Assessment>(
+        `/api/v1/observations/${selectedId}/assessment?${query}`,
+        controller.signal,
+      ),
+      readApi<TimelineData>(
+        `/api/v1/observations/${selectedId}/timeline?${query}&days=180`,
+        controller.signal,
+      ),
+    ])
+      .then(([result, series]) => {
+        if (!active) return;
+        setAssessment(result);
+        setTimeline(series);
+      })
+      .catch(() => {
+        if (active) setAssessmentFailed(true);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [selectedId, mode, basis]);
 
   const region = catalog?.regions.find((item) => item.id === regionId);
   const latestRun = page?.meta.latest_run;
@@ -731,12 +925,25 @@ function App() {
           observation={selected}
           context={context?.observation_id === selectedId ? context : null}
           contextFailed={contextFailed}
+          assessment={
+            <AssessmentPanel
+              assessment={
+                assessment?.observation_id === selectedId ? assessment : null
+              }
+              timeline={
+                timeline?.observation_id === selectedId ? timeline : null
+              }
+              failed={assessmentFailed}
+              basis={basis}
+              onBasis={setBasis}
+            />
+          }
         />
         <footer>
           <p>
-            Observations are unclassified. Mapped facilities and event grouping
-            are context, not a source classification. No trained model or
-            industrial-incident confirmation is available.
+            Assessments are transparent rules with uncalibrated thresholds, not
+            a trained model. Mapped facilities and event grouping are context.
+            No industrial-incident confirmation is available.
           </p>
           <span>ThermoScope · Git_Push_Pray</span>
         </footer>

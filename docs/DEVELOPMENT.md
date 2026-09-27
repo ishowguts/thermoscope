@@ -39,6 +39,8 @@ Open http://127.0.0.1:5173. The Vite development proxy forwards `/api` and `/hea
 | `GET /api/v1/observations/{id}/context` | P03: approximate pixel area, mapped OSM candidates with distances, snapshot timing, dated land cover, event and site |
 | `GET /api/v1/map/facilities.geojson` | P03: mapped OSM features in a bbox (≤ 5° per axis, capped at 2000, truncation declared) with snapshot attribution |
 | `GET /api/v1/events`, `GET /api/v1/events/{id}` | P03: events from the latest `event-site-v1` run, with members, site recurrence and lineage |
+| `GET /api/v1/observations/{id}/assessment` | P04: rule-based source, behaviour and review priority with reasons; `basis=RETROSPECTIVE` (default) or `OPERATIONAL`; optional timezone-aware `as_of` not before the observation and not in the future |
+| `GET /api/v1/observations/{id}/timeline` | P04: per-overpass FRP maxima and per-day retrieval status within 750 m for 7–180 days before the observation |
 
 There is no prediction endpoint. The UI offers saved historical replay and manually fetched NASA data. Reload refreshes the database view; it does not call NASA. `LIVE` configuration does not create scheduled polling.
 
@@ -82,6 +84,24 @@ make context ARGS="import-osm --region jamnagar --file local/context-fetch/jamna
 ```
 
 Repeat for `singrauli` and `punjab` (hashes in `COVERAGE_INVENTORY.md`). Re-importing the same bytes reuses the snapshot. `extract-landcover` reads only small windows from the public WorldCover tiles and skips observations already summarized unless `--force` is given. `build-events` returns `UNCHANGED` when the input set is unchanged; `--force` rebuilds and records lineage. None of these commands classify anything.
+
+## History and rules (P04)
+
+Assessments need history at the same location. The 51 saved history files live in ignored `local/history-fetch/` with `.meta.json` sidecars. Import them all as historical replay, then refresh land cover and events:
+
+```sh
+for m in local/history-fetch/*-VIIRS_NOAA20_NRT-*.csv.meta.json; do
+  f=${m%.meta.json}
+  read -r region start days sha < <(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['region'], d['start_date'], d['days'], d['content_sha256'])" "$m")
+  make ingest ARGS="import-file --region $region --file $f --sha256 $sha --start-date $start --days $days"
+done
+for r in jamnagar singrauli punjab; do
+  make context ARGS="extract-landcover --region $r --data-mode HISTORICAL_REPLAY"
+  make context ARGS="build-events --region $r --data-mode HISTORICAL_REPLAY"
+done
+```
+
+A new machine without those files must fetch its own bounded history with `make ingest ARGS="fetch --region <r> --start-date YYYY-MM-DD --days 5"` (1–5 days per request) and record the hashes. The assessment is computed on request; nothing needs rebuilding when history grows, except events.
 
 ## Database checks and lifecycle
 

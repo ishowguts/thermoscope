@@ -125,6 +125,8 @@ export type FacilityCandidate = {
   name: string | null;
   facility_type: string;
   primary_tag: string;
+  power_source: string | null;
+  thermal_source_candidate: boolean;
   geometry_kind: string;
   osm_last_edited_at: string | null;
   distance_m: number;
@@ -301,4 +303,90 @@ export function landCoverMix(summary: LandCoverSummary): string {
         `${landCoverClass(item.class)} ${Math.round(item.fraction * 100)}%`,
     )
     .join(" · ");
+}
+
+export type Basis = "RETROSPECTIVE" | "OPERATIONAL";
+export type RuleOutcome = {
+  label: string;
+  rule?: string;
+  subtype?: string;
+  reason_code?: string;
+  direction?: "HIGHER" | "LOWER" | null;
+  heuristic_support?: number;
+  reasons: string[];
+};
+export type WindowFeatures = {
+  days: number;
+  covered_days: number;
+  coverage_fraction: number;
+  detections: number;
+  overpasses: number;
+  active_days: number;
+  days_since_last_detection: number | null;
+};
+export type Assessment = {
+  observation_id: string;
+  as_of: string;
+  basis: Basis;
+  rules_version: string;
+  feature_version: string;
+  not_a_model: string;
+  source: RuleOutcome;
+  behaviour: RuleOutcome;
+  priority: { label: string; rule: string; note: string | null };
+  features: {
+    windows: Record<string, WindowFeatures>;
+    excluded_after_as_of: number;
+    excluded_unknown_availability: number;
+  };
+  thresholds: Record<string, string | number>;
+  missing_or_limited: string[];
+  feature_snapshot_sha256: string;
+};
+export type TimelinePass = {
+  acquired_at: string;
+  satellite: string;
+  daynight: "D" | "N";
+  group: string;
+  detections: number;
+  max_frp_mw: number | null;
+};
+export type Timeline = {
+  observation_id: string;
+  as_of: string;
+  basis: Basis;
+  radius_m: number;
+  episode_start: string;
+  overpasses: TimelinePass[];
+  days: {
+    date: string;
+    retrieved: boolean;
+    detections: number;
+    max_frp_mw: number | null;
+  }[];
+  note: string;
+};
+
+const LABELS: Record<string, string> = {
+  INDUSTRIAL: "Industrial (heuristic)",
+  AGRICULTURAL_BURN: "Agricultural burning (heuristic)",
+  VEGETATION_FIRE: "Vegetation fire (heuristic)",
+  OTHER: "Other",
+  UNKNOWN: "Unknown — not enough consistent evidence",
+  GAS_FLARE: "gas flare",
+  MINING_HEAT: "mining heat",
+  OTHER_PERSISTENT_HEAT: "persistent heat",
+  UNRESOLVED: "type unresolved",
+  RECURRENT_WITHIN_BASELINE: "Within its observed record",
+  ABNORMAL_RELATIVE_TO_BASELINE: "Unusual compared with its record",
+  NEW_OR_TRANSIENT: "New or transient here",
+  INSUFFICIENT_HISTORY: "Not enough comparable history",
+  HIGH: "High",
+  REVIEW: "Needs review",
+  MEDIUM: "Medium",
+  LOW: "Low",
+};
+
+export function ruleLabel(value: string | undefined | null): string {
+  return value ? (LABELS[value] ?? value) : "";
 }

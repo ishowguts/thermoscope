@@ -1,5 +1,6 @@
 from collections.abc import Callable
-from datetime import date
+from datetime import UTC, date, datetime
+from enum import StrEnum
 from typing import Annotated
 from uuid import uuid4
 
@@ -9,12 +10,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
+from thermoscope.assessment import observation_assessment, observation_timeline
 from thermoscope.config import DataMode, Settings
 from thermoscope.context import facilities_geojson, observation_context
 from thermoscope.database import check_readiness
 from thermoscope.events import event_detail, list_events
 from thermoscope.observations import catalog, list_observations, query_params
 from thermoscope.regions import Bounds, Product
+
+
+class AssessmentBasis(StrEnum):
+    RETROSPECTIVE = "RETROSPECTIVE"
+    OPERATIONAL = "OPERATIONAL"
 
 
 def create_app(settings: Settings | None = None, probe: Callable | None = None) -> FastAPI:
@@ -77,10 +84,11 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
     @app.get("/api/v1/status")
     def status():
         return {
-            "stage": "OBSERVATIONS_WITH_CONTEXT",
+            "stage": "CONTEXT_AND_RULES",
             "data_mode": config.app_data_mode.value,
             "ingestion_status": "MANUAL_CLI",
             "classifier_status": "NOT_IMPLEMENTED",
+            "rules_status": "HEURISTIC_RULES_UNCALIBRATED",
             "observation_count": None,
             "last_acquisition_at": None,
         }
@@ -188,6 +196,54 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
         if result is None:
             return error_response(
                 request, "NOT_FOUND", "No event with that ID exists in this data mode.", 404
+            )
+        return result
+
+    @app.get("/api/v1/observations/{observation_id}/assessment")
+    def assessment(
+        request: Request,
+        observation_id: Annotated[str, Path(pattern="^[0-9a-f]{64}$")],
+        data_mode: DataMode = config.app_data_mode,
+        basis: AssessmentBasis = AssessmentBasis.RETROSPECTIVE,
+        as_of: datetime | None = None,
+    ):
+        if as_of is not None and (as_of.tzinfo is None or as_of > datetime.now(UTC)):
+            return error_response(
+                request, "INVALID_QUERY", "as_of needs a timezone and cannot be in the future.", 422
+            )
+        try:
+            result = observation_assessment(config, observation_id, data_mode, as_of, basis.value)
+        except ValueError:
+            return error_response(
+                request, "INVALID_QUERY", "as_of cannot precede the observation.", 422
+            )
+        except SQLAlchemyError:
+            return error_response(
+                request, "DATA_UNAVAILABLE", "The stored-data service is not ready."
+            )
+        if result is None:
+            return error_response(
+                request, "NOT_FOUND", "No observation with that ID exists in this data mode.", 404
+            )
+        return result
+
+    @app.get("/api/v1/observations/{observation_id}/timeline")
+    def timeline(
+        request: Request,
+        observation_id: Annotated[str, Path(pattern="^[0-9a-f]{64}$")],
+        data_mode: DataMode = config.app_data_mode,
+        basis: AssessmentBasis = AssessmentBasis.RETROSPECTIVE,
+        days: int = Query(default=180, ge=7, le=180),
+    ):
+        try:
+            result = observation_timeline(config, observation_id, data_mode, days, basis.value)
+        except (SQLAlchemyError, ValueError):
+            return error_response(
+                request, "DATA_UNAVAILABLE", "The stored-data service is not ready."
+            )
+        if result is None:
+            return error_response(
+                request, "NOT_FOUND", "No observation with that ID exists in this data mode.", 404
             )
         return result
 
