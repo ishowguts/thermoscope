@@ -1,14 +1,16 @@
 # Project state
 
-Checkpoint: 27 September 2026, 03:55 IST, written after taking over. Stage: **P01 complete; P02 complete (local checks + clean-checkout CI passed); P03 on branch `p03-context` and P04 on branch `p04-history` implemented and in review (CI green, not merged)**. Deadline: SIH idea submission 30 September 2026.
+Checkpoint: 27 September 2026, 16:30 IST, written. Stage: **P01 complete; P02 complete (local checks + clean-checkout CI passed); P03 on `p03-context`, P04 on `p04-history` and P05 on `p05-model` implemented and in review (not merged). P05's evaluation gate is blocked on human-reviewed labels.** Deadline: SIH idea submission 30 September 2026.
 
 **Every session reads the internal handoff log first**: it says which tool last wrote, where it took over, where it stopped and the exact next action.
 
-**Current split (owner's decision, 27 September 04:00 IST): the implementer built P03 on branch `p03-context` (in review since 04:55 IST); the integrator owns the six-slide deck (internal record SUBMISSION-DECK). The implementer has not started the PPT.**
+**Current split (owner's decisions, 27 September): the implementer built P03 (`p03-context`), P04 (`p04-history`) and P05 (`p05-model`), stacked in that order and all in review; the integrator owns the six-slide deck (internal record SUBMISSION-DECK). The implementer has not started the PPT.**
 
 P03 on the branch adds dated OSM facility context with an approximate pixel area, ESA WorldCover 2021 land cover, and deterministic events/recurring sites (ADR-014–016). Branch checks: 77 unit/API and 10 PostGIS tests, four green CI runs, headless-browser flow. Open before "done": a person-reviewed adjacent industrial/cropland case (candidate: Jamnagar power-plant group) and a run on the owner's Mac (rasterio wheel needs macOS 14+). `main` still contains only P01/P02 code; the Mac database is at migration 0002.
 
 P04 on `p04-history` (stacked on P03) adds as-of history using 232 real NOAA-20 observations from 1 July–21 September and transparent rules for likely source, behaviour and review priority with reasons, a retrospective/operational availability switch and a 180-day timeline (ADR-017). Branch checks: 104 unit/API and 11 PostGIS tests, green CI. Thresholds are uncalibrated defaults; no trained model or probability exists.
+
+P05 on `p05-model` (stacked on P04, owner's request "start and finish p05") adds NOAA-20 SP history (30 March–30 June) for 14 regions plus NRT for 11 new ones (464 files, 23,746 detections), `event-site-v2` episodes (7-day maximum), a frozen case set `p05-pilot-v1` (10,318 cases, 2,462 site groups, leak-free splits, hashed manifest), WRI GPPD v1.3.0 registry evidence, a blind label-review page with adjudication, and an XGBoost pipeline with baselines, calibration, abstention, group-bootstrap intervals and a model card (ADR-018/019). **Zero human reviews exist**, so the only runs are `INSUFFICIENT_LABELS` and a rule-label `DRY_RUN_NOT_EVIDENCE`; there is no evaluated model or accuracy figure. About 460 reviews are needed before results can be reported (internal record P05-LABELS-MODEL). Branch checks: 133 unit/API and 13 PostGIS tests.
 
 Canonical workspace: the fresh `thermoscope` folder. Remote: https://github.com/ishowguts/thermoscope, private. Branch: `main`. Original Part 1 and ThermalGuard projects remain historical references.
 
@@ -42,7 +44,7 @@ Engineering task in review: internal record P03-CONTEXT on branch `p03-context`,
 |---|---|---|
 | Earthdata archive authorization | Historical/HLS retrieval | Web login confirmed; programmatic check pending |
 | Portal limits and nomination confirmation | Final submission package | Team identity confirmed; portal fields not audited |
-| Independent reviewers and incident evidence | Credible labels/evaluation | Not arranged; no gold labels |
+| Independent reviewers and incident evidence | Credible labels/evaluation | Review tool ready on `p05-model`; no reviewer has started; no gold labels, no incident evidence |
 | Cloud provider, billing owner and bounded spend | Paid deployment/experiments | No resources provisioned |
 | Code license and release allowlist | Public release | Undecided; repo private |
 
