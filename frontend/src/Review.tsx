@@ -341,6 +341,7 @@ function ReviewForm({
   onDraft,
   onSaved,
   onStale,
+  onExpired,
 }: {
   data: ReviewCase;
   reviewer: Reviewer;
@@ -349,6 +350,7 @@ function ReviewForm({
   onDraft: (draft: Draft | null) => void;
   onSaved: (message: string) => void;
   onStale: () => void;
+  onExpired: () => void;
 }) {
   const [draft, setDraftState] = useState<Draft>(initial ?? EMPTY_DRAFT);
   const [error, setError] = useState("");
@@ -436,10 +438,7 @@ function ReviewForm({
       );
     } catch (reason) {
       if (reason instanceof CaseChanged) onStale();
-      else if (reason instanceof SignInRequired)
-        setError(
-          "Your sign-in is no longer valid (token rotated or account deactivated). Nothing was saved; your draft stays on this page until you sign out.",
-        );
+      else if (reason instanceof SignInRequired) onExpired();
       else setError((reason as Error).message);
     } finally {
       setSaving(false);
@@ -611,8 +610,12 @@ export function ReviewPage() {
   const [queue, setQueue] = useState<ReviewQueue | null>(null);
   const [caseId, setCaseId] = useState<string | null>(null);
   const [caseTick, setCaseTick] = useState(0);
-  // Unsaved drafts per case, kept while switching cases or after a reload; cleared on sign-out.
-  const drafts = useRef<Record<string, Draft>>({});
+  // Unsaved drafts per case and role, kept while switching cases, after a reload and across an
+  // expired sign-in by the same person; cleared on "Sign out" or when someone else signs in.
+  const drafts = useRef<{
+    owner: string;
+    byCase: Record<string, { role: string; draft: Draft }>;
+  }>({ owner: "", byCase: {} });
   const keepCase = useRef<string | null>(null);
   const [data, setData] = useState<ReviewCase | null>(null);
   const [error, setError] = useState("");
@@ -637,7 +640,7 @@ export function ReviewPage() {
     return () => controller.abort();
   }, []);
 
-  const signOut = useCallback((reason = "") => {
+  const signOut = useCallback((reason = "", keepDrafts = false) => {
     setToken("");
     setReviewer(null);
     setQueue(null);
@@ -645,7 +648,7 @@ export function ReviewPage() {
     setData(null);
     setMessage("");
     setError(reason);
-    drafts.current = {};
+    if (!keepDrafts) drafts.current = { owner: "", byCase: {} };
     try {
       sessionStorage.removeItem(TOKEN_KEY);
     } catch {
@@ -655,7 +658,8 @@ export function ReviewPage() {
   const expired = useCallback(
     () =>
       signOut(
-        "Your sign-in is no longer valid (token rotated or account deactivated). Sign in again.",
+        "Your sign-in is no longer valid (token rotated or account deactivated). Sign in again with your current token; unsaved drafts come back if it is your account.",
+        true,
       ),
     [signOut],
   );
@@ -668,6 +672,8 @@ export function ReviewPage() {
         "/api/v1/annotation/me",
         candidate,
       );
+      if (drafts.current.owner !== who.name)
+        drafts.current = { owner: who.name, byCase: {} };
       setToken(candidate);
       setReviewer(who);
       setTokenInput("");
@@ -679,7 +685,7 @@ export function ReviewPage() {
         }
       }
     } catch (reason) {
-      if (!remember) {
+      if (!remember && reason instanceof SignInRequired) {
         try {
           sessionStorage.removeItem(TOKEN_KEY); // a stored token that no longer works
         } catch {
@@ -935,19 +941,37 @@ export function ReviewPage() {
             </div>
             {data && (
               <div className="list-panel form-panel">
-                <ReviewForm
-                  key={data.case_id}
-                  data={data}
-                  reviewer={reviewer}
-                  token={token}
-                  initial={drafts.current[data.case_id]}
-                  onDraft={(draft) => {
-                    if (draft) drafts.current[data.case_id] = draft;
-                    else delete drafts.current[data.case_id];
-                  }}
-                  onSaved={saved}
-                  onStale={stale}
-                />
+                {data.your_role ? (
+                  <ReviewForm
+                    key={`${data.case_id}-${data.your_role}`}
+                    data={data}
+                    reviewer={reviewer}
+                    token={token}
+                    initial={
+                      drafts.current.byCase[data.case_id]?.role ===
+                      data.your_role
+                        ? drafts.current.byCase[data.case_id].draft
+                        : undefined
+                    }
+                    onDraft={(draft) => {
+                      const cases = drafts.current.byCase;
+                      if (draft && data.your_role)
+                        cases[data.case_id] = { role: data.your_role, draft };
+                      else delete cases[data.case_id];
+                    }}
+                    onSaved={saved}
+                    onStale={stale}
+                    onExpired={() => {
+                      keepCase.current = data.case_id;
+                      expired();
+                    }}
+                  />
+                ) : (
+                  <p className="empty-list">
+                    Nothing more is needed from you on this case. Choose another
+                    from the queue.
+                  </p>
+                )}
               </div>
             )}
           </section>

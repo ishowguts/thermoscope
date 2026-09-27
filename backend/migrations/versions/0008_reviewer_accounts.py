@@ -5,8 +5,10 @@ account, not the request body, names the reviewer. Accounts are never deleted an
 never changes (deactivate or rotate the token instead). If a token was misused, the owner voids the
 account's reviews: they stay stored but no longer count, and a voided account stays closed. Every
 new review must carry an account; reviews saved before this revision (none exist in any known
-database) keep their typed name. Downgrading is refused once any account exists, because it would
-drop the link between reviews and the people who wrote them.
+database) keep their typed name. Opening a case's adjudication view is logged (append-only), so
+someone who has seen the earlier reviews can never later give a "blind" review of that case.
+Downgrading is refused once any account exists, because it would drop the link between reviews
+and the people who wrote them.
 """
 
 from alembic import op
@@ -62,6 +64,19 @@ def upgrade():
             CHECK (reviewer_id IS NOT NULL) NOT VALID;
         CREATE UNIQUE INDEX ux_label_reviews_account
             ON label_reviews (case_set_id, case_id, reviewer_id);
+
+        CREATE TABLE adjudication_views (
+            case_set_id uuid NOT NULL,
+            case_id char(64) NOT NULL,
+            reviewer_id uuid NOT NULL REFERENCES reviewers(id),
+            first_viewed_at timestamptz NOT NULL,
+            PRIMARY KEY (case_set_id, case_id, reviewer_id),
+            FOREIGN KEY (case_set_id, case_id) REFERENCES label_cases(case_set_id, id)
+        );
+        CREATE TRIGGER adjudication_views_immutable BEFORE UPDATE OR DELETE ON adjudication_views
+            FOR EACH ROW EXECUTE FUNCTION thermoscope_refuse_change();
+        CREATE TRIGGER adjudication_views_no_truncate BEFORE TRUNCATE ON adjudication_views
+            FOR EACH STATEMENT EXECUTE FUNCTION thermoscope_refuse_change();
     """)
 
 
@@ -73,6 +88,7 @@ def downgrade():
                     USING ERRCODE = 'restrict_violation';
             END IF;
         END $$;
+        DROP TABLE IF EXISTS adjudication_views;
         DROP INDEX ux_label_reviews_account;
         ALTER TABLE label_reviews DROP CONSTRAINT label_reviews_signed_in;
         ALTER TABLE label_reviews DROP COLUMN reviewer_id;

@@ -327,14 +327,16 @@ def test_review_bodies_are_validated_and_cannot_name_a_reviewer():
 def test_review_only_server_withholds_automated_assessments():
     client = TestClient(create_app(Settings(_env_file=None, database_url=None, review_only=True)))
     oid = "0" * 64
-    # Label progress (tiers, agreement, pending adjudications) would tell a second reviewer
-    # whether they agreed with the first, so it is withheld too.
-    for path in (f"/api/v1/observations/{oid}/assessment", f"/api/v1/observations/{oid}/timeline",
-                 "/api/v1/annotation/pilot-set/summary"):  # fmt: skip
+    for path in (f"/api/v1/observations/{oid}/assessment", f"/api/v1/observations/{oid}/timeline"):
         response = client.get(path)
         assert response.status_code == 403
         assert response.json()["code"] == "WITHHELD_ON_REVIEW_SERVER"
     assert client.get("/api/v1/status").json()["review_only"] is True
+    # Label progress (tiers, agreement, pending adjudications) would tell a second reviewer
+    # whether they agreed with the first: it has no HTTP endpoint at all (owners run
+    # `make ml ARGS="summary ..."`).
+    for server in (client, TestClient(create_app(Settings(_env_file=None, database_url=None)))):
+        assert server.get("/api/v1/annotation/pilot-set/summary").status_code == 404
 
 
 def test_cors_allows_review_posts_from_the_workbench_only():

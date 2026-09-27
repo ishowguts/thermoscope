@@ -243,30 +243,45 @@ def landcover_features(land: dict | None) -> dict:
 
 
 def history_archive_gaps(conn, set_id, mode: DataMode) -> tuple[int, list[dict]]:
-    """Regions whose saved NOAA-20 archive does not reach back the full history window before
-    their first case. Feature rows are immutable, so computing them before the archive is imported
-    would fix truncated history under the version name (ADR-022)."""
+    """Regions whose saved NOAA-20 archive misses any day from the full history window before
+    their first case to their last case (qualifying runs only: succeeded, nothing quarantined).
+    Feature rows are immutable, so computing them on an incomplete archive would fix truncated
+    history under the version name (ADR-022). Dates are UTC days."""
     rows = conn.execute(
         text("""
-        WITH first AS (
-            SELECT DISTINCT ON (region_id) region_id,started_at,geom FROM label_cases
-            WHERE case_set_id=:s ORDER BY region_id,started_at)
-        SELECT f.region_id,f.started_at::date AS first_case,
-            (SELECT min(r.start_date) FROM ingestion_runs r
-             WHERE r.data_mode=:mode AND r.product = ANY(:family) AND r.status='SUCCEEDED'
-                AND ST_Covers(r.bounds,f.geom)) AS archive_from
-        FROM first f ORDER BY f.region_id
+        WITH span AS (
+            SELECT region_id,(min(started_at) AT TIME ZONE 'UTC')::date AS first_case,
+                (max(started_at) AT TIME ZONE 'UTC')::date AS last_case,
+                (array_agg(geom ORDER BY started_at))[1] AS geom
+            FROM label_cases WHERE case_set_id=:s GROUP BY region_id),
+        days AS (
+            SELECT s.region_id,s.geom,d::date AS day FROM span s,
+                generate_series(s.first_case - :window, s.last_case, interval '1 day') d)
+        SELECT region_id,count(*) AS days,min(day) AS needed_from,
+            count(*) FILTER (WHERE NOT covered) AS missing_days,
+            min(day) FILTER (WHERE NOT covered) AS first_missing
+        FROM (SELECT d.region_id,d.day,EXISTS (
+                SELECT 1 FROM ingestion_runs r
+                WHERE r.data_mode=:mode AND r.product = ANY(:family) AND r.status='SUCCEEDED'
+                    AND r.rejected_rows=0 AND r.start_date<=d.day AND r.end_date>=d.day
+                    AND ST_Covers(r.bounds,d.geom)) AS covered
+              FROM days d) x
+        GROUP BY region_id ORDER BY region_id
     """),
-        {"s": set_id, "mode": mode.value, "family": list(NOAA20_PRODUCTS)},
+        {
+            "s": set_id,
+            "mode": mode.value,
+            "family": list(NOAA20_PRODUCTS),
+            "window": BASELINE_WINDOW,
+        },  # fmt: skip
     ).mappings()
-    gaps = []
-    checked = 0
+    gaps, checked = [], 0
     for r in rows:
         checked += 1
-        needed = r["first_case"] - timedelta(days=BASELINE_WINDOW)
-        if r["archive_from"] is None or r["archive_from"] > needed:
-            gaps.append({"region_id": r["region_id"], "needed_from": str(needed),
-                         "archive_from": str(r["archive_from"])})  # fmt: skip
+        if r["missing_days"]:
+            gaps.append({"region_id": r["region_id"], "needed_from": str(r["needed_from"]),
+                         "missing_days": r["missing_days"],
+                         "first_missing": str(r["first_missing"])})  # fmt: skip
     return checked, gaps
 
 
@@ -284,9 +299,10 @@ def compute_case_features(
         checked, gaps = history_archive_gaps(conn, set_id, mode)
         if gaps and not allow_partial_history:
             raise ValueError(
-                f"HISTORY_ARCHIVE_INCOMPLETE: {len(gaps)} of {checked} region(s) lack NOAA-20 "
-                f"history from {gaps[0]['needed_from']} ({gaps[0]['region_id']} first); import "
-                "the saved archive first, or pass --allow-partial-history"
+                f"HISTORY_ARCHIVE_INCOMPLETE: {len(gaps)} of {checked} region(s) miss NOAA-20 "
+                f"days ({gaps[0]['region_id']}: {gaps[0]['missing_days']} from "
+                f"{gaps[0]['first_missing']}); import the saved archive first, or pass "
+                "--allow-partial-history"
             )
         cases = (
             conn.execute(
@@ -1025,8 +1041,8 @@ def model_card(report: dict) -> str:
         "## Limitations",
         "- Pilot regions in India only; March–September 2026; NOAA-20 VIIRS only. Cases whose "
         "90-day history was less than 80 % retrieved are set aside, never imputed "
-        f"({set_aside} here; with the "
-        "SP archive from 30 December 2025 these are cases near a region edge).",
+        f"({set_aside} here: cases near a region edge, where the history circle extends beyond "
+        "the fetched area, or with gaps in the saved archive).",
         "- OSM is incomplete and dated after most observations (retrospective context).",
         "- WorldCover is from 2021; land use may have changed.",
         "- Thresholds for abstention are chosen on validation data and are not a guarantee.",

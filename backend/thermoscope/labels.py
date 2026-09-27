@@ -751,6 +751,16 @@ COUNTED = """NOT EXISTS (SELECT 1 FROM reviewers v
     WHERE v.id=r.reviewer_id AND v.reviews_voided_at IS NOT NULL)"""
 
 
+def saw_earlier_reviews(conn, set_id, case_id: str, reviewer_id: str) -> bool:
+    return bool(
+        conn.execute(
+            text("""SELECT 1 FROM adjudication_views WHERE case_set_id=:s AND case_id=:id
+                AND reviewer_id=CAST(:r AS uuid)"""),
+            {"s": set_id, "id": case_id, "r": reviewer_id},
+        ).first()
+    )
+
+
 class CaseChanged(Exception):
     """The case's review state changed after the reviewer opened it (for example another person
     saved first), so the review they wrote no longer fits the role they were shown."""
@@ -841,6 +851,13 @@ def review_queue(settings: Settings, set_ref: str, reviewer: dict, limit: int = 
             .all()
         )
         newer = superseded_by(conn, set_id)
+        seen = set(
+            conn.execute(
+                text("""SELECT case_id FROM adjudication_views WHERE case_set_id=:s
+                    AND reviewer_id=CAST(:r AS uuid)"""),
+                {"s": set_id, "r": reviewer["id"]},
+            ).scalars()
+        )
     adjudicate, review, done = [], [], 0
     for r in rows:
         if r["mine"]:
@@ -858,7 +875,7 @@ def review_queue(settings: Settings, set_ref: str, reviewer: dict, limit: int = 
         }
         if basis == "DISAGREEMENT_PENDING_ADJUDICATION":
             adjudicate.append(item | {"role": "ADJUDICATOR"})
-        elif r["reviews"] < r["review_slots"]:
+        elif r["reviews"] < r["review_slots"] and r["id"] not in seen:
             review.append(item | {"role": "REVIEWER"})
     return {
         "case_set_id": str(set_id),
@@ -880,7 +897,8 @@ def review_queue(settings: Settings, set_ref: str, reviewer: dict, limit: int = 
 
 def review_case(settings: Settings, set_ref: str, case_id: str, reviewer: dict) -> dict | None:
     """Evidence for a blind review: no rule, weak/silver label or model output. Earlier reviews
-    (without names) are shown only to a signed-in adjudicator who has not reviewed the case."""
+    (without names) are shown only to a signed-in adjudicator who has not reviewed the case, and
+    that view is logged: whoever has seen them can adjudicate but never review the case blind."""
     from thermoscope.context import (
         CONTEXT_RADIUS_M,
         find_candidates,
@@ -889,7 +907,7 @@ def review_case(settings: Settings, set_ref: str, case_id: str, reviewer: dict) 
         support_radius_m,
     )
 
-    with database_engine(settings) as engine, engine.connect() as conn:
+    with database_engine(settings) as engine, engine.begin() as conn:
         set_id = case_set_id(conn, set_ref)
         case = (
             conn.execute(
@@ -948,10 +966,25 @@ def review_case(settings: Settings, set_ref: str, case_id: str, reviewer: dict) 
                 {"s": set_id, "id": case_id, "rid": reviewer["id"], "who": reviewer["name"]},
             ).mappings()
         ]
-    state = resolve_label(prior, case["review_slots"], None, None)
-    reviewed = any(r.pop("mine") for r in prior)
-    pending = state["basis"] == "DISAGREEMENT_PENDING_ADJUDICATION"
-    may_adjudicate = pending and reviewer["can_adjudicate"] and not reviewed
+        state = resolve_label(prior, case["review_slots"], None, None)
+        reviewed = any(r.pop("mine") for r in prior)
+        pending = state["basis"] == "DISAGREEMENT_PENDING_ADJUDICATION"
+        may_adjudicate = pending and reviewer["can_adjudicate"] and not reviewed
+        seen = saw_earlier_reviews(conn, set_id, case_id, reviewer["id"])
+        if may_adjudicate and not seen:
+            conn.execute(
+                text("""INSERT INTO adjudication_views (case_set_id,case_id,reviewer_id,
+                    first_viewed_at) VALUES (:s,:id,CAST(:r AS uuid),:now)
+                    ON CONFLICT DO NOTHING"""),
+                {"s": set_id, "id": case_id, "r": reviewer["id"], "now": datetime.now(UTC)},
+            )
+    blind_reviews = sum(r["role"] == "REVIEWER" for r in prior)
+    if may_adjudicate:
+        role = "ADJUDICATOR"
+    elif not (reviewed or seen or pending) and blind_reviews < case["review_slots"]:
+        role = "REVIEWER"
+    else:
+        role = None  # the same answer for "already agreed", "awaiting adjudication" and "yours"
     return {
         "case_id": case["id"],
         "case_set_id": str(set_id),
@@ -974,13 +1007,16 @@ def review_case(settings: Settings, set_ref: str, case_id: str, reviewer: dict) 
         "land_cover": land,
         "links": external_links(case["lon"], case["lat"], case["started_at"].date()),
         "blind": True,
-        "reviews_recorded": len(prior),
+        # Hidden from whoever reviewed the case: a later adjudication would show as a third
+        # review and tell them the second reviewer disagreed.
+        "reviews_recorded": None if reviewed else len(prior),
         # Only an adjudicator sees earlier reviews (without reviewer names), to settle a
         # disagreement. Rule outputs, registry-derived labels and model scores are never shown.
         "adjudication": {"needed": True, "earlier_reviews": prior} if may_adjudicate else None,
         "reviewed_by_you": reviewed,
-        # Sent back with the review: the server refuses it if the case changed meanwhile.
-        "your_role": "ADJUDICATOR" if may_adjudicate else "REVIEWER",
+        # Sent back with the review: the server refuses it if the case changed meanwhile. None:
+        # nothing more is needed from this person on this case.
+        "your_role": role,
         "guidance": "Decide what kind of source most likely produced this heat: source identity "
         "only, never whether an accident happened. Only dated imagery near the episode (for "
         "example NASA Worldview true colour, Sentinel-2 or Landsat with its date) or an official "
@@ -1206,6 +1242,8 @@ def submit_review(settings: Settings, set_ref: str, payload: dict, reviewer: dic
             role = None
         # A blind review never becomes an adjudication (or the reverse): if the case changed
         # after it was opened, the same answer is given whatever changed, so it reveals nothing.
+        if role == "REVIEWER" and saw_earlier_reviews(conn, set_id, case_id, str(account["id"])):
+            role = None  # saw the earlier reviews as an adjudicator: never a blind review here
         if role != expected:
             raise CaseChanged("this case changed while you had it open; reload it")
         dated = sorted(i["observed_on"] for i in evidence["items"] if i["observed_on"])

@@ -112,7 +112,9 @@ def test_case_set_reviews_features_and_training_gate(configured):
     with pytest.raises(ValueError, match="HISTORY_ARCHIVE_INCOMPLETE"):
         compute_case_features(configured, "fixture-set")
     features = compute_case_features(configured, "fixture-set", allow_partial_history=True)
-    assert features["history_archive"]["regions_short"][0]["region_id"] == "jamnagar"
+    short = features["history_archive"]["regions_short"]
+    assert [r["region_id"] for r in short] == ["jamnagar"]
+    assert short[0]["first_missing"] == short[0]["needed_from"] and short[0]["missing_days"] > 80
     assert features["cases"] == 12 and features["silver_labels"] == 1  # the coal station
     assert features["history_complete"] == 0  # one fixture day: no 90-day history anywhere
     again = compute_case_features(configured, "fixture-set", allow_partial_history=True)
@@ -127,7 +129,9 @@ def test_case_set_reviews_features_and_training_gate(configured):
 
     # Personal accounts: the server keeps only a hash of each token.
     tokens = {}
-    for name, adjudicator in (("Asha", False), ("Ben", False), ("Dev", False), ("Chen", True)):
+    for name, adjudicator in (
+        ("Asha", False), ("Ben", False), ("Dev", False), ("Chen", True), ("Esi", True),
+    ):  # fmt: skip
         account, tokens[name] = add_reviewer(configured, name, adjudicator)
         assert account["name"] == name and "token" not in account
     with pytest.raises(ValueError, match="already exists"):
@@ -182,7 +186,9 @@ def test_case_set_reviews_features_and_training_gate(configured):
     # answer whatever changed, so it neither becomes the deciding label nor reveals the split.
     dev = client.get(f"{base}/queue", headers=auth("Dev")).json()
     assert dev["adjudication"] == [] and dev["remaining_adjudications"] is None
-    assert client.get(case_url, headers=auth("Dev")).json()["adjudication"] is None
+    assert case_id not in [i["case_id"] for i in dev["review"]]
+    dev_view = client.get(case_url, headers=auth("Dev")).json()
+    assert dev_view["adjudication"] is None and dev_view["your_role"] is None
     for who, role in (("Dev", "REVIEWER"), ("Dev", "ADJUDICATOR"), ("Chen", "REVIEWER")):
         stale = post(who, "OTHER", role=role)
         assert stale.status_code == 409 and stale.json()["code"] == "CASE_CHANGED", (who, role)
@@ -190,6 +196,9 @@ def test_case_set_reviews_features_and_training_gate(configured):
     assert asha_queue["your_reviews"] == 1 and asha_queue["remaining_adjudications"] is None
     asha_view = client.get(case_url, headers=auth("Asha")).json()
     assert asha_view["adjudication"] is None and asha_view["reviewed_by_you"]
+    assert asha_view["your_role"] is None and asha_view["reviews_recorded"] is None
+    # Esi opens the adjudication view (logged) but leaves it to Chen.
+    assert client.get(case_url, headers=auth("Esi")).json()["your_role"] == "ADJUDICATOR"
     chen = client.get(f"{base}/queue", headers=auth("Chen")).json()
     assert [i["case_id"] for i in chen["adjudication"]] == [case_id]
     chen_view = client.get(case_url, headers=auth("Chen")).json()
@@ -222,6 +231,7 @@ def test_case_set_reviews_features_and_training_gate(configured):
     listed = list_reviewers(configured)
     assert {r["name"]: (r["reviews"], r["active"]) for r in listed} == {
         "Asha": (1, True), "Ben": (1, False), "Chen": (1, True), "Dev": (0, True),
+        "Esi": (0, True),
     }  # fmt: skip
     assert not any(t in json.dumps(listed, default=str) for t in tokens.values())
 
@@ -292,6 +302,15 @@ def test_case_set_reviews_features_and_training_gate(configured):
     dev = client.get(f"{base}/queue", headers=auth("Dev")).json()
     reopened = next(i for i in dev["review"] if i["case_id"] == case_id)
     assert reopened["reviews"] == 1 and reopened["needs"] == 2
+    assert client.get(case_url, headers=auth("Dev")).json()["your_role"] == "REVIEWER"
+    # Esi has seen both earlier reviews, so she can never be the "blind" second reviewer.
+    esi = client.get(f"{base}/queue", headers=auth("Esi")).json()
+    assert case_id not in [i["case_id"] for i in esi["review"] + esi["adjudication"]]
+    assert client.get(case_url, headers=auth("Esi")).json()["your_role"] is None
+    assert post("Esi", "AGRICULTURAL_BURN").status_code == 409
+    with pytest.raises(DBAPIError, match="immutable"):
+        with database_engine(configured) as engine, engine.begin() as conn:
+            conn.execute(text("DELETE FROM adjudication_views"))
     with pytest.raises(ValueError, match="stays closed"):
         reactivate(configured, "Ben")
     with pytest.raises(LookupError):

@@ -504,9 +504,11 @@ export type ReviewCase = {
   land_cover: LandCover | null;
   links: { label: string; url: string }[];
   blind: boolean;
-  reviews_recorded: number;
+  /** Hidden (null) from anyone who reviewed the case. */
+  reviews_recorded: number | null;
   reviewed_by_you: boolean;
-  your_role: "REVIEWER" | "ADJUDICATOR";
+  /** null: nothing more is needed from this person on this case. */
+  your_role: "REVIEWER" | "ADJUDICATOR" | null;
   adjudication: { needed: boolean; earlier_reviews: EarlierReview[] } | null;
   guidance: string;
   evidence_policy: {

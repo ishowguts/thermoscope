@@ -23,6 +23,7 @@ if [ ! -f "$MAIN/scripts/run.sh" ] || [ ! -f "$HERE/branch.bundle" ]; then
     exit 2
 fi
 EXPECTED="$(tr -d ' \n' < "$HERE/expected-sha.txt")"
+rm -f "$REPORT"
 (umask 077; : > "$RAW")
 finish() { # redact configured secrets into report.txt and remove the raw log, whatever happened
     [ -f "$RAW" ] || return 0

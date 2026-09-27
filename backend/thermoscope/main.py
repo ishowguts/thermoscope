@@ -24,7 +24,6 @@ from thermoscope.labels import (
     SUBTYPES,
     CaseChanged,
     CaseSetSuperseded,
-    label_summary,
     list_case_sets,
     models_list,
     review_case,
@@ -430,19 +429,6 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
             return error_response(
                 request, "CONFLICT", "This review was already recorded; reload the case.", 409
             )
-        except SQLAlchemyError:
-            return unavailable(request)
-
-    @app.get("/api/v1/annotation/{case_set}/summary")
-    def annotation_summary(request: Request, case_set: Annotated[str, CASE_SET]):
-        # Label tiers, agreement and pending adjudications change as each review is saved, so a
-        # reviewer could tell whether they agreed with the first; owners use `make ml summary`.
-        if config.review_only:
-            return withheld(request)
-        try:
-            return label_summary(config, case_set)
-        except IngestError:
-            return error_response(request, "NOT_FOUND", "No case set with that name.", 404)
         except SQLAlchemyError:
             return unavailable(request)
 

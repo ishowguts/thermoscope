@@ -112,7 +112,12 @@ def main(argv=None):
             # The token is saved to the owner-only file first; the account changes only after
             # that succeeded, and the file is removed again if the account change fails.
             token = reviewers.new_token()
-            path = reviewers.write_token_file(args.token_file or _token_path(args.name), token)
+            try:
+                path = reviewers.write_token_file(args.token_file or _token_path(args.name), token)
+            except FileExistsError:
+                raise IngestError("TOKEN_FILE_EXISTS") from None
+            except OSError:
+                raise IngestError("TOKEN_FILE_NOT_WRITTEN") from None
             try:
                 if args.command == "add-reviewer":
                     account, _ = reviewers.add_reviewer(
@@ -156,13 +161,6 @@ def main(argv=None):
             report = label_summary(settings, _need(parser, args.case_set))
         print(json.dumps(report, indent=2, default=str))
         return 0
-    except FileExistsError:
-        print(json.dumps({"status": "FAILED", "error_code": "TOKEN_FILE_EXISTS"}))
-        return 1
-    except OSError as error:
-        print(json.dumps({"status": "FAILED", "error_code": "TOKEN_FILE_NOT_WRITTEN",
-                          "detail": error.strerror}))  # fmt: skip
-        return 1
     except (IngestError, ValueError, LookupError) as error:
         code = error.code if isinstance(error, IngestError) else "INVALID_REQUEST"
         print(json.dumps({"status": "FAILED", "error_code": code, "detail": str(error)[:200]}))
