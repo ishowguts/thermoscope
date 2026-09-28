@@ -303,17 +303,18 @@ Accepted implementation `d9ca117`, incorporating `3b12068` / `4b4f375`. Initial 
 
 Acceptance report and local evidence/recovery paths: internal record P05-MAC-ACCEPTANCE. Human validation explicitly deferred (ADR-024). No P06–P08 application change, submission artifact refresh, public deployment or portal mutation in this checkpoint. v2's separate-branch P05 wording remains to be refreshed before approval. No old author commits, data volumes or verification clones were removed.
 
-## 28 September 2026, 17:25–19:30 IST — P07-SUB-001 offline demo and evidence exports (branch `p07-demo`)
+## 28 September 2026, 17:25–19:15 IST — P07-SUB-001 offline demo and evidence exports (branch `p07-demo`)
 
-Base `c1d48b8`; commits `8f410e5`, `31504f0` and documentation. Linux x86_64 cloud workspace (2 vCPU, Python 3.13.15, uv 0.12.19, Node 24.21.0, digest-pinned PostGIS 18-3.6) with its full historical-replay database (51,354 observations). The Mac checkout, its database and the submission files were not touched. Full table, screenshot and download hashes: internal record P07-SUBMISSION-DEMO (Result); commands: `docs/DEMO_RUNBOOK.md`.
+Base `c1d48b8`; branch commits listed in the handoff entry. Linux x86_64 cloud workspace (2 vCPU, Python 3.13.15, uv 0.12.19, Node 24.21.0, digest-pinned PostGIS 18-3.6) with its full historical-replay database (51,354 observations). The Mac checkout, its database and the submission files were not touched. Full table, screenshot and download hashes: internal record P07-SUBMISSION-DEMO (Result); commands: `docs/DEMO_RUNBOOK.md`.
 
 | Check | Observed result | Scope / limitation |
 |---|---|---|
-| `make check` | Ruff; **154 passed**; Prettier; `tsc`; Vite build | Map chunk warning unchanged |
-| `make integration` | **23 passed** (4 new P07 PostGIS tests) | Disposable databases |
-| GitHub Actions | `8f410e5`: run [36422194564](https://github.com/ishowguts/thermoscope/actions/runs/36422194564) success | Later commits: see the handoff entry |
-| Demo package | `thermoscope-demo-v1`: 186 listed files, 1,445,606 bytes, content `52a29fdf…56f0`, identical on rebuild; inventory `inventory/demo-v1-files.csv` | Jamnagar, Punjab; historical replay |
-| Offline load | New database, every non-loopback connection refused: 110 FIRMS files / 5,971 rows, 2 OSM extracts, 73/73 land-cover summaries reproduced from chips, events rebuilt; 24.4 s. Versus the full database, 131 NRT observations: 0 differences in rule labels, inputs, reasons, missing data, association, land cover, event size or timeline | Workspace, not the Mac |
-| Browser (headless Chromium, network refused by dead proxy and DNS blackhole) | Five demo cases, evidence/window exports, empty region, keyboard, 1920/1366/390 widths without horizontal scroll, WebGL-disabled fallback; 54 tile requests attempted, 0 completed; after the fix, reload with the basemap remembered off makes 0 external requests; online partial tile failure keeps the basemap with a notice | Machine not physically disconnected; Mac Wi-Fi-off run pending |
-| Timings | API list 0.05–0.07 s; window export 0.05–0.06 s (57 obs), with rules 3.9–4.0 s; assessment 0.06–0.09 s; evidence 0.24–0.32 s; first rows in the browser 0.84–1.8 s | Measured, no targets |
+| `make check` | Ruff; **155 passed**; Prettier; `tsc`; Vite build | Map chunk warning unchanged |
+| `make integration` | **23 passed** (4 new P07 PostGIS tests, including tamper, traversal, symlink, forged land cover and expected-hash refusal) | Disposable databases |
+| Independent review | Separate read-only pass on `c1d48b8..c9016d7`: no high finding; 6 medium (SP land cover not packaged; verification bypassable by rewritten metadata/paths/status; offline guard overclaimed; `load` could target the main database; context attribution missing from rule exports; zsh-incompatible commands) and 9 low; all fixed with tests or repeated checks | Findings not re-reviewed by a second pass |
+| Demo package | `thermoscope-demo-v1`: 3,420 listed files, 12,642,434 bytes, content `fdf0f61c…3597`, identical on rebuild; inventory `inventory/demo-v1-files.csv` | Jamnagar, Punjab; historical replay |
+| Offline load | New database with the process guard: 110 FIRMS files / 5,971 rows, 2 OSM extracts, 3,307/3,307 land-cover summaries reproduced from chips, events rebuilt, `ok: true`, 49.1 s. Versus the full database: all detections and land-cover rows identical; rule labels/inputs/missing data identical for all 131 NRT and 300 sampled SP; context and timeline identical for the NRT | Workspace, not the Mac |
+| Browser (headless Chromium, network refused by dead proxy and DNS blackhole) | Five demo cases, evidence/window exports, empty region, keyboard, 1920/1366/390 widths without horizontal scroll, WebGL-disabled fallback; 54 tile requests attempted, 0 completed; reload with the fallback remembered makes 0 external requests; online partial tile failure keeps the basemap with a notice | Machine not physically disconnected; Mac Wi-Fi-off run pending |
+| Timings | API list 0.05 s; window export 0.04–0.05 s (57 obs), with rules 3.6–3.8 s; assessment 0.06–0.08 s; evidence 0.22–0.28 s; first rows in the browser 0.8–1.8 s | Measured, no targets |
 | Secret scan | Branch diff, tracked files, package and downloads: 0 password matches, 0 FIRMS API URLs | FIRMS key not present in this workspace |
+| GitHub Actions | `8f410e5`: run [36422194564](https://github.com/ishowguts/thermoscope/actions/runs/36422194564) success; final commit: see the handoff entry | Ubuntu |
