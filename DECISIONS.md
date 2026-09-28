@@ -157,3 +157,11 @@ The shared review token and typed names (ADR-018) let anyone with the token reco
 - Migration 0008 (revised twice before publication; no persistent database other than an empty-account cloud workspace ran a draft) refuses to downgrade once accounts exist.
 
 This is sign-in for a small team pilot, not single sign-on: no passwords, expiry, second factor or central identity; the owner must pass tokens privately and use HTTPS off the local machine. Production authentication remains P07.
+
+## ADR-024 — separate engineering acceptance from deferred human validation (28 September 2026)
+
+The owner has no time or available domain expert for manual review before submission. Finish and verify P05's engineering, but defer P03 source sign-off and P05 scientific acceptance. Do not require reviewer recruitment, real reviewer accounts or hundreds of labels before an honest idea submission. Keep all genuine reviews empty until people actually perform them; AI-assisted evidence collection does not constitute independent human truth.
+
+The reviewed-label run must remain `INSUFFICIENT_LABELS`; a rule-label execution check remains `DRY_RUN_NOT_EVIDENCE`. Neither can supply accuracy claims or authorize learned inference. The app continues computed, uncalibrated rules with explicit uncertainty. Deferring validation is a delivery decision, not a weaker model-promotion criterion.
+
+Recommended next engineering scope is `P07-SUBMISSION-DEMO.md` (reliable replay, bounded exports, accessible evidence views), then the corresponding P08 release checks. P06's optional imagery experiment waits for labels that permit a meaningful comparison. Full production authentication, alert workflows, deployment and a validated model remain separate, unfinished work. No public deployment, paid resource, video upload or SIH submission is authorized by this decision alone.

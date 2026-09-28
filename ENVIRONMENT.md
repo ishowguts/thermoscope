@@ -1,6 +1,6 @@
 # Environment and version baseline
 
-Candidate research dated 25 September 2026; P01–P04 verification dated 26–27 September. **The installed API/UI/map and raster subset is tested and frozen on the Mac and in CI. P05's optional ML group has branch CI evidence but remains pending Mac verification and dependency review. Other optional packages remain candidates.** Do not silently substitute prereleases or `latest` tags.
+Candidate research dated 25 September 2026; P01–P04 verification dated 26–27 September. **The installed API/UI/map and raster subset is tested and frozen on the Mac and in CI. P05's optional ML group is frozen and independently Mac-verified (148 unit/API + 19 PostGIS tests); the recorded dependency advisory audit is point-in-time and must be refreshed for release. Other optional packages remain candidates.** Do not silently substitute prereleases or `latest` tags.
 
 ## Runtime choices
 
@@ -97,3 +97,7 @@ GitHub Actions revisions are pinned to official v6 commit SHAs verified through 
 - PostgreSQL batch jobs (event builds, case sets, features) use a 10-minute statement timeout; API requests keep 2 seconds.
 - P05 reconciliation adds migration `0007_review_integrity` (PostgreSQL triggers; no extension) and the optional `REVIEW_ONLY` setting. No new dependency.
 - 28 September: migration `0008_reviewer_accounts` (reviewer accounts, review-account link, adjudication-view log; triggers only). The former `ANNOTATION_TOKEN` setting is no longer read (an old `.env` entry is ignored); reviewer tokens live in the database as SHA-256 hashes and, until handed over, in ignored owner-only files under `local/reviewer-tokens/`. No new dependency.
+
+## Independent P05 Mac acceptance — 28 September 2026 IST
+
+Final implementation `d9ca117`: frozen API/UI/ML install, a small synthetic XGBoost fit, `make check` (148 unit/API tests plus lint/format/type/build) and `make integration` (19 PostGIS tests) passed in the isolated review worktree. Main subsequently installed the same environment, migrated to 0008 and ran the real P05 pipeline. Details: internal record P05-MAC-ACCEPTANCE. libomp 23.1.2 was already installed by the owner; no new runtime/dependency choice was introduced. A local backup was fully restored into the isolated database. Cloud restore and production deployment remain untested.

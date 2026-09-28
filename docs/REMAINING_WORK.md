@@ -4,9 +4,9 @@ Checkpoint: 28 September 2026 IST. This is a delivery checklist, not a completio
 
 ## What already exists
 
-- P01–P04 are technically integrated on private GitHub main and verified on the Mac: genuine FIRMS ingestion, PostGIS, API/map, OSM/WorldCover context, events/sites, history and transparent rules with UNKNOWN outcomes. Main has 245 unique observations across three pilot regions. Rules are computed from data; they are uncalibrated heuristics, not learned probabilities or confirmed source truth.
-- The integrated checks passed: 106 unit/API plus 15 PostGIS tests, lint, formatting, TypeScript and production build. Real provider reads and the built browser flow were checked. Five evidence defects were corrected. Human domain review remains pending.
-- P05 is integrated in `main` (28 September, at the owner's request): 14-region NOAA-20 archive from 30 December 2025, frozen facility-aware case set (10,318 cases; 10,035 history-eligible), evidence policy, blind review page with personal reviewer accounts, and an XGBoost/baseline/calibration pipeline. Reviewed and verified on the Mac in an isolated clone. Zero human labels, so no reportable learned-model performance; learned predictions are not served in the app.
+- P01–P04 are technically integrated on private GitHub main and verified on the Mac: genuine FIRMS ingestion, PostGIS, API/map, OSM/WorldCover context, events/sites, history and transparent rules with UNKNOWN outcomes. Main now has 51,354 genuine observations across 14 pilot regions after P05 acceptance. Rules are computed from data; they are uncalibrated heuristics, not learned probabilities or confirmed source truth.
+- The final P05 implementation independently passed 148 unit/API plus 19 PostGIS tests on the Mac, along with lint, formatting, TypeScript and production build. Real provider reads and the built browser flow were checked. Five evidence defects were corrected. Human domain review is deferred at the owner's request.
+- P05 is integrated in `main` (28 September, at the owner's request): 14-region NOAA-20 archive from 30 December 2025, frozen facility-aware case set (10,318 cases; 10,035 history-eligible), evidence policy, blind review page with personal reviewer accounts, and an XGBoost/baseline/calibration pipeline. Separate review passes and isolated-clone checks are followed by an independent acceptance, canonical Mac migration/data integration and verified real-data runs (see internal record P05-MAC-ACCEPTANCE). Zero human labels, so no reportable learned-model performance; learned predictions are not served in the app.
 - FIRMS access is working and stored privately. The team leader reports a working Earthdata login. Registered identity is Git_Push_Pray / Bittu Mandal / 144613 / INDIAN INSTITUTE OF INFORMATION TECHNOLOGY, PUNE. On 27 September around 22:19 IST, signed-in team details, submission access and form limits were verified. No separate nomination badge appeared; draft and submitted-idea lists were empty. See `SUBMISSION_DETAILS.md`.
 
 ## A. Before the national idea submission — priority now
@@ -16,21 +16,21 @@ The [official PS table](https://www.sih.gov.in/sih2026PS), checked at approximat
 | Remaining action | Owner | Completion evidence |
 | --- | --- | --- |
 | Portal access/form inspection completed; recheck before final submission | Done using the leader's signed-in session | Correct SIH26162 form accessible; limits recorded in `SUBMISSION_DETAILS.md`; no draft/submission created and no separate nomination badge displayed |
-| Six-slide presentation prepared; team review pending | The integrator prepared; team reviews | Editable PPTX and six-page PDF in `../output/submission/`; correct team details; built/proposed claims separated |
-| Genuine screenshots captured; optional comparison clip and human interpretation remain | The integrator; domain reviewer validates interpretation | Final deck uses actual refinery map/history; solar UNKNOWN comparison is in the video shot list; no dry-run accuracy or independent source verdict |
-| Portal text, editable architecture, sources and claim ledger prepared | The integrator prepared; team reviews | Title 72, summary 1,570 and description 6,007 characters; files listed in `SUBMISSION_PACKAGE.md` |
-| Final PDF rendering and inspection completed | The integrator | All six pages visually inspected; 562,150 bytes, within 10 MB; five PDF reference links present |
+| Refresh the prepared six-slide presentation after P05 integration; team review follows | The integrator prepared; team reviews | Editable PPTX and six-page PDF in `../output/submission/`; correct team details; built/proposed claims separated |
+| Genuine screenshots captured; refresh the optional comparison clip | Done; human interpretation deferred | v2 uses actual refinery map/history; solar UNKNOWN comparison is in the video shot list; no dry-run accuracy or independent source verdict |
+| Refresh prepared portal text and claim ledger against the final demonstrated release | The integrator prepared; team reviews | Title 72, summary 1,570 and description 6,007 characters; files listed in `SUBMISSION_PACKAGE.md` |
+| Export and inspect the refreshed final PDF | The integrator | v2 passed six-page visual/link checks at 562,150 bytes; a changed version needs fresh inspection |
 | Record and caption the optional roughly 2–3 minute demo video | The integrator prepares; team can narrate | Speaking script and shot list exist; no recorded/uploaded video yet. No selection guarantee |
 | Make supporting material accessible to judges | Prepared; team chooses public scope | Logged-out link checks. Private GitHub is not a judge-accessible public demo; a reviewed video can avoid waiting for deployment |
 | Approve the exact PDF/text, submit through the team account and retain proof | Team leader/team | Submitted PDF, acknowledgement/receipt and verified portal state |
 
-Do **not** wait for P06–P08 or hundreds of reviews before preparing/submitting the idea. At current evidence level, say: “Real-data GIS, contextual rules and history demonstrated; labelling and training pipeline built on a separate branch; model not yet independently evaluated.” Do not imply that an unevaluated learned model is already operating. Selection remains the organizers' decision.
+Do **not** wait for P06–P08 or hundreds of reviews before preparing/submitting the idea. At current evidence level, say: “Real-data GIS, contextual rules and history demonstrated; labelling and training pipeline integrated; model not yet independently evaluated.” Do not imply that an unevaluated learned model is already operating. Selection remains the organizers' decision.
 
-## B. P05 technical reconciliation — done, independent acceptance pending
+## B. P05 technical reconciliation — done and accepted
 
 Full contract and paste prompt: P05-RECONCILE.md.
 
-Done (27–28 September). The review was carried out in two passes, **not **; mark these accepted only after independent check on its return.
+Implemented and reviewed on 27–28 September, then independently accepted on 28 September. The earlier review and the acceptance checks are recorded separately.
 
 - [x] Merge reviewed main into P05 in its separate checkout; preserve both histories and all review fixes. (`09fb77b`; later `1e3bb0a` merged the same way)
 - [x] Check derived P05 features, weak labels and NOAA-20 SP/NRT handling against the corrected rules, coverage and solar safeguards.
@@ -40,20 +40,19 @@ Done (27–28 September). The review was carried out in two passes, **not **; ma
 - [x] Audit the added ML dependencies and licences; rerun relevant tests and CI.
 - [x] Push P05 with reproducible commands and a precise technical/human blocker list.
 
-## C. P05 independent review, Mac verification and integration
+## C. P05 independent review, Mac verification and integration — done
 
-Done on 28 September at the owner's request while the integrator was out of usage:
+- [x] P05 integrated with main CI; the final implementation was inspected and CI independently confirmed.
+- [x] Installed frozen ML dependencies and ran a synthetic XGBoost fit, 148 unit/API tests, 19 PostGIS tests, lint, format, TypeScript and production build on the Mac.
+- [x] Restored the original backup into an isolated database; tested migrations and preservation. Backed up canonical main and applied migrations through 0008.
+- [x] Verified 464 original and 252 backfill FIRMS files by inventory/hash; reproduced frozen cases, facility grouping, land cover and v4 features. All episode/split/feature fingerprints match the recorded results.
+- [x] Added verified data to main with constraints enabled and no replacement of old rows: 51,354 observations. Every original row across 24 application tables remains unchanged.
+- [x] Exercised real main training: `INSUFFICIENT_LABELS` and `DRY_RUN_NOT_EVIDENCE`; artifact hashes pass. No accuracy claims. Zero real reviews/accounts.
+- [x] Browser/API checks: v2 and superseded v1, sign-in protections, genuine newly integrated observations/context/history and clear rule-only messaging. Full acceptance: P05-MAC-ACCEPTANCE.md.
 
-- [x] Independent inspection (separate review pass, two passes; all findings fixed and re-tested). Independent acceptance remains open.
-- [x] Frozen ML installation and XGBoost/OpenMP verified on the owner's Mac in an isolated clone: XGBoost needs `brew install libomp`; afterwards 148 unit/API + 19 PostGIS tests, lint, format, typecheck and build passed.
-- [x] Migrations 0006–0008 exercised on disposable databases (including refusal to downgrade once accounts exist) and on the workspace database after a backup.
-- [x] Saved hash-verified data imported in the workspace (P05 files, backfill, OSM, registry); counts and fingerprints recorded.
-- [x] Browser/API review checks with fixtures only: personal sign-in, wrong and rotated tokens, deactivation, two blind reviewers, stale saves, adjudication, drafts, superseded set, phone width. No real labels.
-- [x] Reviewer access: personal accounts replace the private shared token. Remaining decision for the owner: localhost works only on that computer; remote reviewers need a private HTTPS service.
-- [x] Integrated into `main` with CI; runnable handoff updated.
-- [ ] On the Mac: `git pull`, back up the database, `make migrate` (0005 → 0008), then import the saved P05 files if the Mac should host reviews. The implementer did not touch the Mac checkout or database.
+## D. Human evidence and genuine model evaluation — deferred
 
-## D. Human evidence and genuine model evaluation
+**Owner decision, 28 September (ADR-024): no reviewer recruitment or manual labels are required before submission.** These are later scientific acceptance tasks. Engineering acceptance does not satisfy them, and AI guesses cannot replace independent labels. Real reviewer accounts and private HTTPS are unnecessary until actual people will review.
 
 - [ ] Arrange two independent reviewers for test cases and a third person to resolve disagreements; obtain faculty/domain help for ambiguous industrial/cropland cases. Software can gather evidence and check itself, but cannot certify independent human truth.
 - [ ] Complete the prepared P03 domain-review gate. Its three-case evidence sheet contains rule outcomes: do not use it as blind test-review material for overlapping P05 cases.
@@ -68,7 +67,9 @@ Current estimates after the backfill, **~480 reviews / ~16–24 person-hours** t
 
 P05's current learner is **binary industrial versus non-industrial**. It is not yet a validated multi-class classifier for forest/agricultural fires, mines, flares and accidents. There is no scientifically defensible accuracy figure to put in the submission today.
 
-## E. P06 — optional modern satellite experiment
+## E. P06 — optional modern satellite experiment — defer
+
+Wait for independently reviewed labels before starting the matched comparison. Adding embeddings now cannot establish an improvement.
 
 - [ ] Test eligible AlphaEarth COG features against the same frozen cases; verify availability dates, quantization and missing-data behaviour.
 - [ ] Measure added value, uncertainty, latency and cost with a matched ablation. Retain the simpler model if extra features do not help.
@@ -77,6 +78,8 @@ P05's current learner is **binary industrial versus non-industrial**. It is not 
 These are later experiments, not prerequisites for an honest idea submission. Earth Engine/Dynamic World and licensed Nightfire are optional alternatives, not accounts the leader must obtain now.
 
 ## F. P07 — complete the analyst product
+
+**Recommended next:** the bounded submission demo task: genuine replay, bounded exports, clear evidence/uncertainty and browser fallback/accessibility checks. It keeps one writer per checkout. The full product list below remains broader than that task.
 
 - [ ] Serve only an appropriately accepted model with version/provenance and explicit fallback/abstention; distinguish source classification, unusual behaviour and review priority.
 - [ ] Add analyst authentication/roles, append-only review and an alert lifecycle. Operational decisions must not silently become gold training labels.
@@ -87,10 +90,12 @@ These are later experiments, not prerequisites for an honest idea submission. Ea
 
 ## G. P08 — deployment and release
 
+Run the local demo-release checks after P07-SUB-001. Hosting is optional for submission; a reviewed recording with local replay can be sufficient supporting material. Deployment-only checks apply when a concrete hosting target is authorized.
+
 - [ ] Choose provider/region/billing owner, explicit budget cap and shutdown/resource-lifetime controls before a paid resource starts.
 - [ ] Package reproducible deployment with pinned environments, TLS, appropriate authentication, private database, origin/write restrictions, request/storage limits and secret-safe logs.
 - [ ] Run current dependency/security/licence checks for the actual release, a fresh-clone install, deployment smoke tests and relevant browser/integration checks.
-- [ ] Perform a real database backup/restore exercise; the current backup archive inspection is not a restore test.
+- [ ] Rehearse backup/restore for the final release/deployment target. A real baseline backup was already restored for P05 acceptance; that does not verify a future cloud backup configuration.
 - [ ] Configure monitoring and bounded retention; measure API/pipeline times separately from satellite acquisition/delivery delay.
 - [ ] Finalize runbook, README, setup/troubleshooting, source licences, reproducible data/model evidence and offline fallback.
 - [ ] Review the exact file/data allowlist and code licence before any public repository release. Preserve real authorship and dates; no invented human history or metrics.
@@ -100,8 +105,8 @@ Separate MODIS support, wider sensor/geographic coverage, multi-class/subtype mo
 
 ## What the team leader must supply, and what the developers can do
 
-**Leader/team:** real reviewers and their independent decisions; a private means to share reviewer access; provider/billing/budget choices if cloud spending becomes necessary; public-release/licence choices; final submission approval and team rehearsal/narration. Portal access was supplied and form limits were inspected; sign in again only if the session expires. Do not paste credentials in chat. Existing FIRMS and Earthdata setup need not be repeated.
+**Leader/team now:** choose recording/local replay versus a hosted demo, approve the refreshed submission package, and authorize or perform final submission. Narration is optional. Provider/billing/budget and public-release choices are needed only if hosting or publication is chosen. **Later:** arrange independent reviews and a private means to share reviewer access if pursuing model validation. Portal access was supplied and form limits were inspected; sign in again only if the session expires. Do not paste credentials in chat. Existing FIRMS and Earthdata setup need not be repeated.
 
 **The developers can handle:** source collection, manifests, engineering review, Mac checks, migration/integration, private token generation, review-tool setup, evidence packets, deck/abstract/diagrams, visual QA, demo script, technical deployment preparation, tests and reproducible handoffs. It can execute approved cloud/publishing/submission actions once the exact target and necessary access are established. It cannot supply independent human labels or guarantee SIH selection.
 
-**Next allocation:** the implementer works on section B; the integrator prioritizes section A while preparing section C for the handoff; the leader arranges section D's reviewers. Portal inspection is complete; final submission remains pending. No additional a frontend contributor work is necessary right now. Assign it a separate bounded task only when that would help without overlapping ownership.
+**Next allocation:** after the P05 acceptance checkpoint, the implementer can take P07-SUB-001 in its own branch while the integrator refreshes the submission package and later accepts the branch. P08 demo-release checks follow. Sections D/E are deferred, not secretly completed. Portal inspection is recorded; final submission remains pending.

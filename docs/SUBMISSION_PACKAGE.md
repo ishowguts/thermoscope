@@ -2,6 +2,8 @@
 
 Prepared 27–28 September 2026 for **Git_Push_Pray**, team **144613**, PS **SIH26162**. Status: **ready for team review; no portal entry, upload, saved draft or final submission**. The original PPT and Canva design are unchanged.
 
+**28 September update:** v2 is a preserved, verified P03/P04 presentation. Its statement that P05 remains on a separate branch is now outdated. Revise that status and any data totals against the accepted release, export and inspect the new PDF, then request approval of that exact version. Do not upload v2 unchanged as the final current-status package. Human validation is deferred; no accuracy claim is available.
+
 Files are outside this repository at `/Users/bittumandal/Desktop/sih 2026/output/submission/`. This private repository stores only the handoff and evidence, not presentation binaries or credentials.
 
 | File | Purpose / verified size |
