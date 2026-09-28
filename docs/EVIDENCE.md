@@ -302,3 +302,38 @@ Accepted implementation `d9ca117`, incorporating `3b12068` / `4b4f375`. Initial 
 - Health/status/case-set/models HTTP 200; protected queue/identity HTTP 401 without credentials. No score fields in model-list responses. Browser: v2 plus superseded v1, no-account sign-in status, real Jharia observations and selected mine-context example, measurements/units/provenance, WorldCover and historical rule assessment. Warnings/errors: none in the observed browser flow. This does not independently confirm the heat source.
 
 Acceptance report and local evidence/recovery paths: internal record P05-MAC-ACCEPTANCE. Human validation explicitly deferred (ADR-024). No P06–P08 application change, submission artifact refresh, public deployment or portal mutation in this checkpoint. v2's separate-branch P05 wording remains to be refreshed before approval. No old author commits, data volumes or verification clones were removed.
+
+## 28 September 2026, 17:25–19:10 IST — P07-SUB-001 offline demo and evidence exports (branch `p07-demo`)
+
+Base `c1d48b8`; branch commits listed in the handoff entry. Linux x86_64 cloud workspace (2 vCPU, Python 3.13.15, uv 0.12.19, Node 24.21.0, digest-pinned PostGIS 18-3.6) with its full historical-replay database (51,354 observations). The Mac checkout, its database and the submission files were not touched. Full table, screenshot and download hashes: internal record P07-SUBMISSION-DEMO (Result); commands: `docs/DEMO_RUNBOOK.md`.
+
+| Check | Observed result | Scope / limitation |
+|---|---|---|
+| `make check` | Ruff; **155 passed**; Prettier; `tsc`; Vite build | Map chunk warning unchanged |
+| `make integration` | **23 passed** (4 new P07 PostGIS tests, including tamper, traversal, symlink, forged land cover and expected-hash refusal) | Disposable databases |
+| Independent review | Separate read-only pass on `c1d48b8..c9016d7`: no high finding; 6 medium (SP land cover not packaged; verification bypassable by rewritten metadata/paths/status; offline guard overclaimed; `load` could target the main database; context attribution missing from rule exports; zsh-incompatible commands) and 9 low; all fixed with tests. Second pass on `c9016d7..28bb9f9`: fixes verified; new medium (reload reported `ok: false`), low (top-level manifest fields and README unhashed, `hostaddr` bypass, reverse lookups) and nits; all fixed with tests | Second-pass fixes not reviewed again |
+| Demo package | `thermoscope-demo-v1`: 3,420 listed files, 12,642,434 bytes, content `e5117f72…0464`, identical on rebuild; inventory `inventory/demo-v1-files.csv` | Jamnagar, Punjab; historical replay |
+| Offline load | New database with the process guard: 110 FIRMS files / 5,971 rows, 2 OSM extracts, 3,307/3,307 land-cover summaries reproduced from chips, events rebuilt, `ok: true`, 52.8 s; reload `ok: true`, nothing inserted, 47.2 s. Versus the full database: all detections and land-cover rows identical; rule labels/inputs/missing data identical for all 131 NRT and 300 sampled SP; context and timeline identical for the NRT | Workspace, not the Mac |
+| Browser (headless Chromium, network refused by dead proxy and DNS blackhole) | Five demo cases, evidence/window exports, empty region, keyboard, 1920/1366/390 widths without horizontal scroll, WebGL-disabled fallback; 54 tile requests attempted, 0 completed; reload with the fallback remembered makes 0 external requests; online partial tile failure keeps the basemap with a notice | Machine not physically disconnected; Mac Wi-Fi-off run pending |
+| Timings | API list 0.05 s; window export 0.04–0.05 s (57 obs), with rules 3.6–3.8 s; assessment 0.06–0.08 s; evidence 0.22–0.28 s; first rows in the browser 0.8–1.8 s | Measured, no targets |
+| Secret scan | Branch diff, tracked files, package and downloads: 0 password matches, 0 FIRMS API URLs | FIRMS key not present in this workspace |
+| GitHub Actions | `8f410e5` run [36422194564](https://github.com/ishowguts/thermoscope/actions/runs/36422194564), `28bb9f9` run [36427057590](https://github.com/ishowguts/thermoscope/actions/runs/36427057590), tested tip `ab370da` run [36429320251](https://github.com/ishowguts/thermoscope/actions/runs/36429320251): all success (frozen install, ML install, `make check`, `make integration`) | Ubuntu |
+
+## 28–29 September 2026, 19:27–01:00 IST — P08-REL-001 local release checks (branch `p08-release`)
+
+Stacked on `p07-demo` `1f951f1`; tested tip `05a2431`. Cloud workspace as in the P07 entry. No change to `main`, the Mac or the submission files; no tag, release, upload or deployment. Details, data/model cards and the claims delta: `RELEASE.md`; task record: internal record P08-RELEASE-CHECKS. Evidence files are outside Git in the cloud workspace (`fresh2/`, `p08/`).
+
+| Check | Observed result | Scope / limitation |
+|---|---|---|
+| Fresh clones | Final tip `05a2431`: install 9.9 s, ML 1.1 s, `make check` **164 passed**, `make integration` **23 passed**, audit exit 0. `c17ba3b` (full demo run): 162 + 23, doctor ok; `1f951f1`: 155 + 23 | Linux, empty caches; not the Mac |
+| Demo from the clone | Verified package; offline loads 65.8 / 77.7 s (`ok: true`), reload `ok: true`; API 200s; production build offline: 57 rows 0.75 s, 0 external requests, 0 console errors | Headless Chromium, network refused by dead proxy |
+| Dependency audit | OSV: 0 known vulnerabilities in 48 Python + 93 npm locked versions; `npm audit` 0; licences permissive except reviewed MPL/LGPL exceptions; installed = locked; report `e2e48a3b…` | Snapshot, not legal clearance; wheel-bundled native libraries not inspected |
+| Secret safety | 5 tests (API normal/review-only with well-formed fake token and key, provider failures incl. tracebacks, six failing commands); mutation logging the token is caught | Fake credentials; the real FIRMS key is not in this workspace |
+| Public-release review | 131 files at `9ccc49c`: 0 credentials/key URLs by the screen; 21 with team/personal identity, 1 local user path, 19 internal process records; no code licence | Screen, not proof; nothing published; owner decides |
+| Backup/restore | Fresh-clone demo DB: dump 0.96 s (3.1 MB), restore 1.96 s; 25 tables / 34,471 rows identical; 11 API responses identical; 3,403 objects restored with matching hashes | Demo database, not a cloud backup |
+| Pipeline timings | Four saved loads: FIRMS 12.7–17.3 s, OSM 0.8–0.9 s, land cover 33–42 s, events 10.1–18.8 s; 57–78 s into empty databases, 55 s reload | Satellite/provider delay not measurable from historical replay |
+| P05 artifacts | 10 runs, all manifests and files match; 5 `INSUFFICIENT_LABELS`, 5 `DRY_RUN_NOT_EVIDENCE` | No evaluation exists |
+| Links (signed out) | FIRMS, OSM copyright, OSMF tile policy, CC BY 4.0, WorldCover (+Zenodo DOI), WRI GPPD load; private repo 404; `sih.gov.in` 403 to automated fetchers — not verified | Deck PDF links not checked (separate file) |
+| Independent review | Separate read-only pass on `5735ef5`: 0 high, 4 medium, 9 low, addressed in `c17ba3b`; second pass: fixes confirmed, 1 medium (credential screen) and 7 low, addressed in `ca20848`/`9ccc49c`/`05a2431` | Last fixes not re-reviewed |
+| GitHub Actions | `5735ef5` [36461408662](https://github.com/ishowguts/thermoscope/actions/runs/36461408662), `c17ba3b` [36463846196](https://github.com/ishowguts/thermoscope/actions/runs/36463846196), `2e82906` [36464799347](https://github.com/ishowguts/thermoscope/actions/runs/36464799347), tested tip `05a2431` [36466090643](https://github.com/ishowguts/thermoscope/actions/runs/36466090643): all success | Ubuntu |
+

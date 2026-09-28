@@ -9,9 +9,11 @@ import {
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  EXPORT_LIMITS,
   associationSummary,
   confidence,
   distance,
+  downloadExport,
   facilityType,
   landCoverMix,
   measurement,
@@ -28,6 +30,7 @@ import type {
   Observation,
   ObservationContext,
   ObservationPage,
+  ServiceStatus,
   Timeline as TimelineData,
 } from "./api";
 import { Rail } from "./Rail";
@@ -291,6 +294,10 @@ function AssessmentPanel({
                 ))}
               </ul>
               <small>{assessment.behaviour.rule}</small>
+              <small className="safety-note">
+                Recurring or persistent heat is not evidence that a site is
+                safe.
+              </small>
             </article>
             <article
               className={`priority priority-${assessment.priority.label.toLowerCase()}`}
@@ -323,7 +330,7 @@ function AssessmentPanel({
             </p>
           )}
           {assessment.missing_or_limited.length > 0 && (
-            <ul className="limits">
+            <ul className="limits" aria-label="Missing or limited evidence">
               {assessment.missing_or_limited.map((item) => (
                 <li key={item}>{item}</li>
               ))}
@@ -347,12 +354,24 @@ function Evidence({
   context,
   contextFailed,
   assessment,
+  mode,
+  basis,
 }: {
   observation: Observation | undefined;
   context: ObservationContext | null;
   contextFailed: boolean;
   assessment: ReactNode;
+  mode: DataMode;
+  basis: Basis;
 }) {
+  const [exportNote, setExportNote] = useState("");
+  const [exportFailed, setExportFailed] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const observationId = observation?.id;
+  useEffect(() => {
+    setExportNote("");
+    setExportFailed(false);
+  }, [observationId]);
   if (!observation)
     return (
       <section className="evidence empty-selection">
@@ -372,8 +391,39 @@ function Evidence({
             {observation.geometry.coordinates[0].toFixed(5)}° E
           </h2>
         </div>
-        <span className="tag">No trained classifier · rules only</span>
+        <div className="evidence-actions">
+          <span className="tag">No trained classifier · rules only</span>
+          <button
+            className="quiet"
+            disabled={exporting}
+            onClick={() => {
+              setExporting(true);
+              setExportFailed(false);
+              downloadExport(
+                `/api/v1/exports/observations/${observation.id}/evidence.geojson?${new URLSearchParams({ data_mode: mode, basis })}`,
+              )
+                .then((result) =>
+                  setExportNote(`Saved ${result.filename} (GeoJSON, WGS84).`),
+                )
+                .catch((reason) => {
+                  setExportFailed(true);
+                  setExportNote((reason as Error).message);
+                })
+                .finally(() => setExporting(false));
+            }}
+          >
+            {exporting ? "Preparing…" : "Download evidence (GeoJSON)"}
+          </button>
+        </div>
       </div>
+      {exportNote && (
+        <p
+          className={`export-note ${exportFailed ? "error" : ""}`}
+          role={exportFailed ? "alert" : "status"}
+        >
+          {exportNote}
+        </p>
+      )}
       <div className="evidence-grid">
         <div>
           <h3>Measurements</h3>
@@ -445,7 +495,48 @@ function Evidence({
   );
 }
 
-function App() {
+const BASEMAP_KEY = "thermoscope.basemap";
+
+function rememberBasemap(on: boolean) {
+  try {
+    localStorage.setItem(BASEMAP_KEY, on ? "on" : "off");
+  } catch {
+    /* preference not stored; the choice still applies now */
+  }
+}
+
+function initialBasemap(): boolean {
+  if (import.meta.env.VITE_BASEMAP === "off") return false;
+  try {
+    return localStorage.getItem(BASEMAP_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+function StatusStrip({ status }: { status: ServiceStatus | null }) {
+  const served = status?.classifier_status?.startsWith("NOT_SERVED") ?? true;
+  return (
+    <section className="status-strip" aria-label="What these results are">
+      <span>
+        <strong>Assessments</strong>transparent rules, uncalibrated thresholds ·
+        not a probability
+      </span>
+      <span>
+        <strong>Learned model</strong>
+        {served
+          ? "built, not served · no reviewed labels to evaluate it"
+          : status?.classifier_status}
+      </span>
+      <span>
+        <strong>Human validation</strong>pending · deferred until reviewers are
+        available
+      </span>
+    </section>
+  );
+}
+
+function App({ status }: { status: ServiceStatus | null }) {
   const [mode, setMode] = useState<DataMode>("HISTORICAL_REPLAY");
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [regionId, setRegionId] = useState("jamnagar");
@@ -464,7 +555,25 @@ function App() {
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [timeline, setTimeline] = useState<TimelineData | null>(null);
   const [assessmentFailed, setAssessmentFailed] = useState(false);
+  const [basemap, setBasemap] = useState(initialBasemap);
+  const [basemapUnavailable, setBasemapUnavailable] = useState(false);
+  const [withRules, setWithRules] = useState(false);
+  const [exportNote, setExportNote] = useState("");
+  const [exportFailed, setExportFailed] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const select = useCallback((id: string) => setSelectedId(id), []);
+  const chooseBasemap = useCallback((on: boolean) => {
+    setBasemap(on);
+    if (on) setBasemapUnavailable(false);
+    rememberBasemap(on);
+  }, []);
+  const basemapFailed = useCallback(() => {
+    // Tiles could not be fetched (offline or blocked): stay map-free, and remember it so
+    // later page loads make no further external requests until the user turns it back on.
+    setBasemap(false);
+    setBasemapUnavailable(true);
+    rememberBasemap(false);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -626,9 +735,53 @@ function App() {
   const region = catalog?.regions.find((item) => item.id === regionId);
   const latestRun = page?.meta.latest_run;
   const selected = page?.features.find((item) => item.id === selectedId);
+  const total = page?.meta.total_observations ?? 0;
+  const tooMany = total > EXPORT_LIMITS.observations;
+  const rulesTooMany = total > EXPORT_LIMITS.withRules;
+
+  function exportWindow(format: "csv" | "geojson") {
+    if (!query) return;
+    const parameters = new URLSearchParams({
+      bbox: query.bbox,
+      start_date: query.start_date,
+      end_date: query.end_date,
+      data_mode: mode,
+      rule_outputs: String(withRules && !rulesTooMany),
+      basis,
+    });
+    const rules =
+      withRules && !rulesTooMany
+        ? `, rule outputs (${basis.toLowerCase()} basis)`
+        : "";
+    setExporting(true);
+    setExportFailed(false);
+    downloadExport(`/api/v1/exports/observations.${format}?${parameters}`)
+      .then((result) =>
+        setExportNote(
+          `Saved ${result.filename}: ${result.count} observation(s)${rules}, pixel centres in WGS84 with sources and units.`,
+        ),
+      )
+      .catch((reason) => {
+        setExportFailed(true);
+        setExportNote((reason as Error).message);
+      })
+      .finally(() => setExporting(false));
+  }
 
   return (
     <div className="shell">
+      <a
+        className="skip-link"
+        href="#observation-list"
+        onClick={(event) => {
+          event.preventDefault();
+          const list = document.getElementById("observation-list");
+          const first = list?.querySelector<HTMLElement>(".observation-row");
+          (first ?? list)?.focus();
+        }}
+      >
+        Skip to the observation list
+      </a>
       <Rail active="observations" />
       <main>
         <header>
@@ -669,6 +822,7 @@ function App() {
               : "Manually fetched NASA data · no automatic polling"}
           </p>
         </div>
+        <StatusStrip status={status} />
         <form
           className="filters"
           onSubmit={(event) => {
@@ -771,12 +925,27 @@ function App() {
           <div className="map-panel">
             <div className="panel-heading">
               <h2>{region?.name ?? "Regional"} observations</h2>
-              <button
-                className="quiet"
-                onClick={() => setShowMap((value) => !value)}
-              >
-                {showMap ? "Hide map" : "Show map"}
-              </button>
+              <div className="panel-actions">
+                {showMap && (
+                  <button
+                    className="quiet"
+                    aria-pressed={basemap}
+                    onClick={() => chooseBasemap(!basemap)}
+                  >
+                    {basemap
+                      ? "Basemap on"
+                      : basemapUnavailable
+                        ? "Basemap unavailable · retry"
+                        : "Basemap off"}
+                  </button>
+                )}
+                <button
+                  className="quiet"
+                  onClick={() => setShowMap((value) => !value)}
+                >
+                  {showMap ? "Hide map" : "Show map"}
+                </button>
+              </div>
             </div>
             {loading ? (
               <div className="map-placeholder" role="status">
@@ -799,6 +968,8 @@ function App() {
                       ? context.support_region.geometry
                       : null
                   }
+                  basemap={basemap}
+                  onBasemapUnavailable={basemapFailed}
                 />
               </Suspense>
             ) : (
@@ -837,7 +1008,12 @@ function App() {
               <h2>Observation list</h2>
               <span className="tag">UTC</span>
             </div>
-            <div className="observations" aria-label="Stored observations">
+            <div
+              className="observations"
+              id="observation-list"
+              tabIndex={-1}
+              aria-label="Stored observations"
+            >
               {!loading && !error && page?.features.length === 0 && (
                 <p className="empty-list">
                   No observations in this window. A non-detection does not prove
@@ -906,12 +1082,53 @@ function App() {
                 This query has reached its pagination limit.
               </p>
             )}
+            {page && (
+              <div className="export-bar" aria-label="Export this window">
+                <span>Export window</span>
+                <button
+                  disabled={exporting || tooMany}
+                  onClick={() => exportWindow("csv")}
+                >
+                  CSV
+                </button>
+                <button
+                  disabled={exporting || tooMany}
+                  onClick={() => exportWindow("geojson")}
+                >
+                  GeoJSON
+                </button>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={withRules && !rulesTooMany}
+                    disabled={rulesTooMany}
+                    onChange={(event) => setWithRules(event.target.checked)}
+                  />
+                  with rule outputs
+                </label>
+                <p
+                  className={`export-note ${exportFailed ? "error" : ""}`}
+                  role={exportFailed ? "alert" : "status"}
+                >
+                  {exporting
+                    ? "Preparing export…"
+                    : exportNote ||
+                      (tooMany
+                        ? `${total} observations: narrow the dates (exports are limited to ${EXPORT_LIMITS.observations}).`
+                        : rulesTooMany
+                          ? `Rule outputs can be added for up to ${EXPORT_LIMITS.withRules} observations.`
+                          : "Pixel centres, not fire boundaries · units and sources included.")}
+                </p>
+              </div>
+            )}
           </div>
         </section>
         <Evidence
           observation={selected}
           context={context?.observation_id === selectedId ? context : null}
           contextFailed={contextFailed}
+          mode={mode}
+          basis={basis}
           assessment={
             <AssessmentPanel
               assessment={
@@ -947,7 +1164,8 @@ function currentPage(): "observations" | "review" {
 
 function Root() {
   const [page, setPage] = useState(currentPage);
-  const [reviewOnly, setReviewOnly] = useState(false);
+  const [status, setStatus] = useState<ServiceStatus | null>(null);
+  const reviewOnly = Boolean(status?.review_only);
   useEffect(() => {
     const update = () => setPage(currentPage());
     window.addEventListener("hashchange", update);
@@ -955,13 +1173,13 @@ function Root() {
   }, []);
   useEffect(() => {
     const controller = new AbortController();
-    readApi<{ review_only?: boolean }>("/api/v1/status", controller.signal)
-      .then((status) => setReviewOnly(Boolean(status.review_only)))
+    readApi<ServiceStatus>("/api/v1/status", controller.signal)
+      .then(setStatus)
       .catch(() => undefined);
     return () => controller.abort();
   }, []);
   // A blind-review server never shows the automated assessments.
-  if (page === "observations" && !reviewOnly) return <App />;
+  if (page === "observations" && !reviewOnly) return <App status={status} />;
   return (
     <div className="shell">
       <Rail active="review" reviewOnly={reviewOnly} />

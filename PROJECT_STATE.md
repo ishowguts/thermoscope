@@ -12,8 +12,8 @@ Checkpoint: 28 September 2026 IST. **P01–P05 engineering is integrated and ind
 | P04 history and rules | Engineering accepted; uncalibrated heuristics, no learned inference |
 | P05 labels/model pipeline | Engineering accepted after integration; Mac main updated, database 0008, saved data and artifacts verified. Scientific evaluation/promotion deferred: zero human reviews |
 | P06 satellite experiment | Deferred until independent labels enable a meaningful comparison |
-| P07 analyst product | Full milestone unbuilt; bounded submission demo task prepared, not implemented |
-| P08 release/deployment | Not complete; local demo-release checks recommended after bounded P07; public hosting optional and unprovisioned |
+| P07 analyst product | Full milestone unbuilt. Bounded demo task P07-SUB-001 implemented on branch `p07-demo` (offline replay package, bounded evidence exports, map-free fallback, status strip); **in review**, not integrated |
+| P08 release/deployment | Local release checks (P08-REL-001) done on branch `p08-release`, stacked on `p07-demo`, **in review**: fresh clone, audit, secret safety, backup/restore, release notes `docs/RELEASE.md`. Freeze/tag, deck refresh, code licence, public allowlist and hosting remain open |
 
 ## Verified local implementation
 
@@ -32,8 +32,8 @@ Detailed acceptance and local report paths: internal record P05-MAC-ACCEPTANCE, 
 ## Exact next work
 
 1. **Submission refresh:** v2 PPTX/PDF and portal text exist in `../output/submission/`, but the old separate-branch P05 wording is stale. The integrator updates the claims to the accepted release, exports/visually checks the new PDF, then the team approves that exact content. No video, saved draft, final submission or receipt exists.
-2. **Bounded P07:** internal record P07-SUBMISSION-DEMO is the ready handoff in a separate branch: reliable genuine replay, bounded exports, clear evidence/uncertainty and browser fallback/accessibility. The integrator retains canonical main and submission ownership. Do not start P06, public hosting or learned inference as part of this task.
-3. **Bounded P08:** clean-checkout reproduction, release/security/licence/runbook checks and a genuine demo rehearsal after P07. Local replay plus recording is the planning assumption; hosting requires a concrete provider, access scope and budget before provisioning.
+2. **Bounded P07:** implemented on branch `p07-demo` (28 September; see the task Result and `docs/DEMO_RUNBOOK.md`). The integrator verifies it on the Mac with the network off, then integrates or returns findings. The integrator retains canonical main and submission ownership. P06, public hosting and learned inference remain out of scope.
+3. **Bounded P08:** local checks done on `p08-release` (28 September; `docs/RELEASE.md`). The integrator verifies, integrates both branches and freezes the release per `RELEASE.md` §2; a Mac demo rehearsal with Wi-Fi off remains. Hosting requires a concrete provider, access scope and budget before provisioning.
 4. **Leader attention:** approve the refreshed submission content and authorize or perform final submission; optional narration. No new key, account, GPU, manual technical setup or expert recruitment is needed now. Full list: `docs/LEADER_ACTIONS.md`; all remaining product/scientific work: `docs/REMAINING_WORK.md`.
 
 The signed-in portal was checked on 27 September around 22:19 IST: correct team and PS form accessible, six-member record, title 100 characters, description 50,000, summary 10,000, PDF up to 10 MB, optional YouTube link. No separate nomination badge appeared; no eligibility block was shown. The public table showed 140/500 and 30 September at that time. These are dated snapshots, not reserved capacity; recheck before submission. No portal fields, files, draft or submission were changed in this checkpoint.

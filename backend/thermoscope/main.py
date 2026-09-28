@@ -1,3 +1,4 @@
+import json
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from enum import StrEnum
@@ -7,7 +8,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Header, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
@@ -16,6 +17,16 @@ from thermoscope.config import DataMode, Settings
 from thermoscope.context import facilities_geojson, observation_context
 from thermoscope.database import check_readiness
 from thermoscope.events import event_detail, list_events
+from thermoscope.exports import (
+    EXPORT_VERSION,
+    ExportTooLarge,
+    Withheld,
+    export_filename,
+    observation_evidence,
+    to_csv,
+    to_geojson,
+    window_rows,
+)
 from thermoscope.firms import IngestError
 from thermoscope.labels import (
     EVIDENCE_KINDS,
@@ -77,7 +88,12 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
         allow_origins=config.allowed_origins,
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type", "Authorization"],
-        expose_headers=["X-Request-ID"],
+        expose_headers=[
+            "X-Request-ID",
+            "Content-Disposition",
+            "X-ThermoScope-Export",
+            "X-ThermoScope-Observations",
+        ],
     )
 
     def error_response(request, code, message, status=503):
@@ -142,6 +158,9 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
             "classifier_status": "NOT_SERVED_AWAITING_REVIEWED_LABELS",
             "rules_status": "HEURISTIC_RULES_UNCALIBRATED",
             "review_only": config.review_only,
+            # Additive (P07): human validation is deferred, not waived (ADR-024).
+            "human_validation": "PENDING_DEFERRED",
+            "exports": EXPORT_VERSION,
             "observation_count": None,
             "last_acquisition_at": None,
         }
@@ -303,6 +322,105 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
                 request, "NOT_FOUND", "No observation with that ID exists in this data mode.", 404
             )
         return result
+
+    def download(body: str, media_type: str, filename: str, count: int) -> Response:
+        return Response(
+            body,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Cache-Control": "no-store",
+                "X-ThermoScope-Export": EXPORT_VERSION,
+                "X-ThermoScope-Observations": str(count),
+            },
+        )
+
+    def export_window(request, suffix, bbox, start_date, end_date, data_mode, product, rules,
+                      basis):  # fmt: skip
+        try:
+            bounds = Bounds.parse(bbox)
+            query_params(bounds, start_date, end_date, data_mode, product)
+        except ValueError:
+            return error_response(
+                request,
+                "INVALID_QUERY",
+                "Use bounds up to 5 degrees per axis and a 1–31 day window.",
+                422,
+            )
+        try:
+            records, meta = window_rows(
+                config, bounds, start_date, end_date, data_mode, product, rules, basis.value
+            )
+        except Withheld:
+            return withheld(request)
+        except ExportTooLarge as error:
+            return JSONResponse(
+                status_code=413,
+                content={
+                    "code": "EXPORT_TOO_LARGE",
+                    "message": error.reason,
+                    "observations": error.observations,
+                    "limit": error.limit,
+                    "request_id": request.state.request_id,
+                    "retryable": False,
+                },
+            )
+        except (SQLAlchemyError, ValueError):
+            return unavailable(request)
+        filename = export_filename(bounds, start_date, end_date, suffix)
+        if suffix == "csv":
+            return download(to_csv(records, rules), "text/csv; charset=utf-8", filename,
+                            len(records))  # fmt: skip
+        body = json.dumps(to_geojson(records, meta), ensure_ascii=False)
+        return download(body, "application/geo+json", filename, len(records))
+
+    @app.get("/api/v1/exports/observations.csv")
+    def export_csv(
+        request: Request,
+        bbox: Annotated[str, Query(max_length=120)],
+        start_date: date,
+        end_date: date,
+        data_mode: DataMode = config.app_data_mode,
+        product: Product = Product.NOAA20,
+        rule_outputs: bool = False,
+        basis: AssessmentBasis = AssessmentBasis.RETROSPECTIVE,
+    ):
+        return export_window(request, "csv", bbox, start_date, end_date, data_mode, product,
+                             rule_outputs, basis)  # fmt: skip
+
+    @app.get("/api/v1/exports/observations.geojson")
+    def export_geojson(
+        request: Request,
+        bbox: Annotated[str, Query(max_length=120)],
+        start_date: date,
+        end_date: date,
+        data_mode: DataMode = config.app_data_mode,
+        product: Product = Product.NOAA20,
+        rule_outputs: bool = False,
+        basis: AssessmentBasis = AssessmentBasis.RETROSPECTIVE,
+    ):
+        return export_window(request, "geojson", bbox, start_date, end_date, data_mode, product,
+                             rule_outputs, basis)  # fmt: skip
+
+    @app.get("/api/v1/exports/observations/{observation_id}/evidence.geojson")
+    def export_evidence(
+        request: Request,
+        observation_id: Annotated[str, Path(pattern="^[0-9a-f]{64}$")],
+        data_mode: DataMode = config.app_data_mode,
+        basis: AssessmentBasis = AssessmentBasis.RETROSPECTIVE,
+    ):
+        try:
+            result = observation_evidence(config, observation_id, data_mode, basis.value)
+        except Withheld:
+            return withheld(request)
+        except (SQLAlchemyError, ValueError):
+            return unavailable(request)
+        if result is None:
+            return error_response(
+                request, "NOT_FOUND", "No observation with that ID exists in this data mode.", 404
+            )
+        filename = f"thermoscope-evidence-{observation_id[:12]}.geojson"
+        return download(json.dumps(result, ensure_ascii=False), "application/geo+json", filename, 1)
 
     @app.get("/api/v1/map/facilities.geojson")
     def facilities(

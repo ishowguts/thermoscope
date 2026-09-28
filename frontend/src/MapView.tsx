@@ -20,7 +20,33 @@ type Props = {
   onSelect: (id: string) => void;
   facilities: FacilityCollection | null;
   support: Polygon | null;
+  /** Internet basemap tiles; every data layer is drawn locally without them. */
+  basemap: boolean;
+  onBasemapUnavailable: () => void;
 };
+
+function outline(bounds: [number, number, number, number]): FeatureCollection {
+  const [w, s, e, n] = bounds;
+  return {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        properties: {},
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [w, s],
+            [e, s],
+            [e, n],
+            [w, n],
+            [w, s],
+          ],
+        },
+      },
+    ],
+  };
+}
 
 const EMPTY: FeatureCollection = {
   type: "FeatureCollection",
@@ -34,11 +60,18 @@ export function MapView({
   onSelect,
   facilities,
   support,
+  basemap,
+  onBasemapUnavailable,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<Map | null>(null);
   const select = useRef(onSelect);
   select.current = onSelect;
+  const unavailableTiles = useRef(onBasemapUnavailable);
+  unavailableTiles.current = onBasemapUnavailable;
+  const initialBasemap = useRef(basemap);
+  const basemapTilesLoaded = useRef(false);
+  const basemapFailures = useRef(0);
   const [ready, setReady] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const [tileError, setTileError] = useState(false);
@@ -78,6 +111,7 @@ export function MapView({
             },
             facilities: { type: "geojson", data: EMPTY },
             support: { type: "geojson", data: EMPTY },
+            region: { type: "geojson", data: outline(bounds) },
           },
           layers: [
             {
@@ -89,7 +123,21 @@ export function MapView({
               id: "basemap",
               type: "raster",
               source: "osm",
+              // Hidden layers request no tiles, so an offline start makes no internet call.
+              layout: {
+                visibility: initialBasemap.current ? "visible" : "none",
+              },
               paint: { "raster-saturation": -0.45, "raster-opacity": 0.86 },
+            },
+            {
+              id: "region-outline",
+              type: "line",
+              source: "region",
+              paint: {
+                "line-color": "#607565",
+                "line-width": 1,
+                "line-dasharray": [4, 3],
+              },
             },
             {
               id: "facility-areas",
@@ -167,8 +215,25 @@ export function MapView({
         "top-right",
       );
       instance.addControl(new ScaleControl({ unit: "metric" }), "bottom-left");
-      instance.on("load", () => setReady(true));
-      instance.on("error", () => setTileError(true));
+      // The style (and every local data source) is usable before basemap tiles arrive; waiting
+      // for "load" would hang the data layers whenever tiles cannot be fetched (offline).
+      instance.once("style.load", () => setReady(true));
+      instance.on("sourcedata", (event) => {
+        if (event.sourceId === "osm" && (event as { tile?: unknown }).tile)
+          basemapTilesLoaded.current = true;
+      });
+      instance.on("error", (event) => {
+        // Several basemap tiles failing before any arrived (offline, blocked) switch the
+        // basemap off; a stray failure only shows the notice. Data layers stay either way.
+        if ((event as { sourceId?: string }).sourceId !== "osm") {
+          setTileError(true);
+          return;
+        }
+        basemapFailures.current += 1;
+        if (!basemapTilesLoaded.current && basemapFailures.current >= 3)
+          unavailableTiles.current();
+        else setTileError(true);
+      });
       instance.on("webglcontextlost", () => setUnavailable(true));
       instance.on("click", "observations", (event) => {
         const id = event.features?.[0]?.properties?.observation_id;
@@ -210,6 +275,21 @@ export function MapView({
       },
     );
   }, [ready, features, bounds]);
+
+  useEffect(() => {
+    if (!ready || !map.current) return;
+    if (basemap) basemapFailures.current = 0; // a retry counts its own failures
+    map.current.setLayoutProperty(
+      "basemap",
+      "visibility",
+      basemap ? "visible" : "none",
+    );
+  }, [ready, basemap]);
+
+  useEffect(() => {
+    if (!ready || !map.current) return;
+    (map.current.getSource("region") as GeoJSONSource).setData(outline(bounds));
+  }, [ready, bounds]);
 
   useEffect(() => {
     if (!ready || !map.current) return;
@@ -271,6 +351,12 @@ export function MapView({
           available.
         </div>
       )}
+      {!basemap && !unavailable && (
+        <div className="map-notice basemap-off" role="status">
+          No basemap: points, pixel area and mapped facilities are drawn from
+          stored data only.
+        </div>
+      )}
       {!ready && !unavailable && <div className="map-notice">Loading map…</div>}
       <div className="map-legend">
         <div>
@@ -282,6 +368,9 @@ export function MapView({
         <div>
           <i className="legend-facility" /> Mapped OSM industrial feature · not
           a confirmed source
+        </div>
+        <div>
+          <i className="legend-region" /> Region extent (data retrieved inside)
         </div>
       </div>
     </div>
