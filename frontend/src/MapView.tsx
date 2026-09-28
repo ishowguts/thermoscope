@@ -70,6 +70,7 @@ export function MapView({
   const unavailableTiles = useRef(onBasemapUnavailable);
   unavailableTiles.current = onBasemapUnavailable;
   const initialBasemap = useRef(basemap);
+  const basemapTilesLoaded = useRef(false);
   const [ready, setReady] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const [tileError, setTileError] = useState(false);
@@ -216,9 +217,17 @@ export function MapView({
       // The style (and every local data source) is usable before basemap tiles arrive; waiting
       // for "load" would hang the data layers whenever tiles cannot be fetched (offline).
       instance.once("style.load", () => setReady(true));
+      instance.on("sourcedata", (event) => {
+        if (event.sourceId === "osm" && (event as { tile?: unknown }).tile)
+          basemapTilesLoaded.current = true;
+      });
       instance.on("error", (event) => {
-        // A failed basemap tile (offline, blocked) switches the basemap off; data stays.
-        if ((event as { sourceId?: string }).sourceId === "osm")
+        // Basemap tiles failing before any arrived (offline, blocked) switch the basemap
+        // off; an occasional failure after others loaded only shows the notice. Data stays.
+        if (
+          (event as { sourceId?: string }).sourceId === "osm" &&
+          !basemapTilesLoaded.current
+        )
           unavailableTiles.current();
         else setTileError(true);
       });

@@ -497,6 +497,14 @@ function Evidence({
 
 const BASEMAP_KEY = "thermoscope.basemap";
 
+function rememberBasemap(on: boolean) {
+  try {
+    localStorage.setItem(BASEMAP_KEY, on ? "on" : "off");
+  } catch {
+    /* preference not stored; the choice still applies now */
+  }
+}
+
 function initialBasemap(): boolean {
   if (import.meta.env.VITE_BASEMAP === "off") return false;
   try {
@@ -557,15 +565,14 @@ function App({ status }: { status: ServiceStatus | null }) {
   const chooseBasemap = useCallback((on: boolean) => {
     setBasemap(on);
     if (on) setBasemapUnavailable(false);
-    try {
-      localStorage.setItem(BASEMAP_KEY, on ? "on" : "off");
-    } catch {
-      /* preference not stored; the choice still applies now */
-    }
+    rememberBasemap(on);
   }, []);
   const basemapFailed = useCallback(() => {
+    // Tiles could not be fetched (offline or blocked): stay map-free, and remember it so
+    // later page loads make no further external requests until the user turns it back on.
     setBasemap(false);
     setBasemapUnavailable(true);
+    rememberBasemap(false);
   }, []);
 
   useEffect(() => {
