@@ -318,3 +318,22 @@ Base `c1d48b8`; branch commits listed in the handoff entry. Linux x86_64 cloud w
 | Timings | API list 0.05 s; window export 0.04–0.05 s (57 obs), with rules 3.6–3.8 s; assessment 0.06–0.08 s; evidence 0.22–0.28 s; first rows in the browser 0.8–1.8 s | Measured, no targets |
 | Secret scan | Branch diff, tracked files, package and downloads: 0 password matches, 0 FIRMS API URLs | FIRMS key not present in this workspace |
 | GitHub Actions | `8f410e5` run [36422194564](https://github.com/ishowguts/thermoscope/actions/runs/36422194564), `28bb9f9` run [36427057590](https://github.com/ishowguts/thermoscope/actions/runs/36427057590), tested tip `ab370da` run [36429320251](https://github.com/ishowguts/thermoscope/actions/runs/36429320251): all success (frozen install, ML install, `make check`, `make integration`) | Ubuntu |
+
+## 28 September 2026, 19:27–24:00 IST — P08-REL-001 local release checks (branch `p08-release`)
+
+Stacked on `p07-demo` `1f951f1`; candidate `c17ba3b`. Cloud workspace as in the P07 entry. No change to `main`, the Mac or the submission files; no tag, release, upload or deployment. Details, data/model cards and the claims delta: `RELEASE.md`; task record: internal record P08-RELEASE-CHECKS. Evidence files are outside Git in the cloud workspace (`fresh2/`, `p08/`).
+
+| Check | Observed result | Scope / limitation |
+|---|---|---|
+| Fresh clone `c17ba3b` | Frozen install 11.0 s, ML 1.6 s, `make check` **162 passed** (23.5 s), `make integration` **23 passed** (49.0 s), doctor ok; `1f951f1` earlier: 155 + 23 | Linux, empty caches; not the Mac |
+| Demo from the clone | Verified package; offline loads 65.8 / 77.7 s (`ok: true`), reload `ok: true`; API 200s; production build offline: 57 rows 0.75 s, 0 external requests, 0 console errors | Headless Chromium, network refused by dead proxy |
+| Dependency audit | OSV: 0 known vulnerabilities in 48 Python + 93 npm locked versions; `npm audit` 0; licences permissive except reviewed MPL/LGPL exceptions; installed = locked; report `e2e48a3b…` | Snapshot, not legal clearance; wheel-bundled native libraries not inspected |
+| Secret safety | 5 tests (API normal/review-only with well-formed fake token and key, provider failures incl. tracebacks, six failing commands); mutation logging the token is caught | Fake credentials; the real FIRMS key is not in this workspace |
+| Public-release review | 130 tracked files: 0 credentials/key URLs; 21 with team/personal identity, 1 local user path, 18 internal process records; no code licence | Nothing published; owner decides |
+| Backup/restore | Fresh-clone demo DB: dump 0.96 s (3.1 MB), restore 1.96 s; 25 tables / 34,471 rows identical; 11 API responses identical; 3,403 objects restored with matching hashes | Demo database, not a cloud backup |
+| Pipeline timings | Load stages: FIRMS 15.6–17.3 s, OSM 0.8–0.9 s, land cover 35–42 s, events 11.6–18.8 s; five loads 50–78 s | Satellite/provider delay not measurable from historical replay |
+| P05 artifacts | 10 runs, all manifests and files match; 5 `INSUFFICIENT_LABELS`, 5 `DRY_RUN_NOT_EVIDENCE` | No evaluation exists |
+| Links (signed out) | FIRMS, OSM copyright, OSMF tile policy, CC BY 4.0, WorldCover (+Zenodo DOI), WRI GPPD load; private repo 404; `sih.gov.in` 403 to automated fetchers — not verified | Deck PDF links not checked (separate file) |
+| Independent review | Separate read-only pass on `5735ef5`: 0 high, 4 medium, 9 low; all addressed in `c17ba3b` | Fixes not re-reviewed |
+| GitHub Actions | see the handoff entry | Ubuntu |
+

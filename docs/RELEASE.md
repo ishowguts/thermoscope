@@ -9,19 +9,20 @@ Prepared on 28 September 2026 IST under `P08-REL-001` (internal record P08-RELEA
 | Branch | Adds |
 | --- | --- |
 | `p07-demo` (tip `1f951f1`, CI green) | P07-SUB-001: offline historical-replay package, bounded CSV/GeoJSON evidence exports, map-free fallback, status strip, accessibility fixes. Runbook: `docs/DEMO_RUNBOOK.md` |
-| `p08-release` (stacked on `p07-demo`) | These notes, release checks and their tooling/tests: `scripts/release_audit.py`, `backend/tests/test_release_secrets.py`, per-stage load timings |
+| `p08-release` (stacked on `p07-demo`) | These notes; release tooling (`scripts/release_audit.py`, `scripts/public_release_review.py`) with tests (`test_release_secrets.py`, `test_release_audit.py`); per-stage load timings; a JSON error instead of a traceback when the demo script cannot reach the database |
 
 It is a **research demonstration of saved real observations**: NASA FIRMS VIIRS NOAA-20 detections with dated OpenStreetMap and ESA WorldCover context, 180-day history and transparent, uncalibrated source/behaviour/review-priority rules. It does not monitor live, send alerts, serve a learned model, report accuracy or confirm incidents. Human validation is deferred (ADR-024).
 
 ## 2. Freezing it
 
-After reviewing both branches (in a separate worktree, not the Mac main checkout):
+Review both branches in a separate worktree first. The merge itself happens where the integrator keeps `main` checked out (the canonical Mac checkout), after its usual lock-free status check and backup:
 
 ```bash
 git fetch origin
 git switch main && git pull --ff-only
-git merge --no-ff origin/p08-release        # contains p07-demo
-make install && make install-ml && make check && make integration   # expect 158 + 23 passed
+git merge --no-ff -m "Integrate P07 demo and P08 release checks" origin/p08-release   # contains p07-demo
+make install && make install-ml && make check && make integration   # expect 162 + 23 passed
+# update README (drop "awaiting acceptance"), PROJECT_STATE, EVIDENCE and HANDOFF, commit
 git push origin main                        # then wait for CI to pass
 git tag -a <release-name> -m "ThermoScope demo release: offline replay, evidence exports" <merge-sha>
 git push origin <release-name>
@@ -31,16 +32,18 @@ The tag name, whether to publish a GitHub release and whether to make anything p
 
 ## 3. Verified for this candidate (cloud workspace, 28 September)
 
+Evidence files are in the cloud workspace (`fresh2/` and `p08/`, outside Git); numbers below come from them.
+
 | Check | Result |
 | --- | --- |
-| Fresh clone of `p07-demo` (`1f951f1`) | Cold frozen install 7.1 s (downloaded Python 3.13.15, 37 packages, `npm ci`); ML group 1.0 s; `make check` 155 passed + lint/format/type/build (14.3 s); `make integration` 23 passed (33.6 s); `doctor`: database, PostGIS, schema ok |
-| Demo from the fresh clone | Package verified with its expected hash; loaded offline into a new, migrated database (`ok: true`, 50.9 s); API health, readiness, status and observations 200; production UI build served by `vite preview` with `VITE_BASEMAP=off`, network refused: 57 rows in 0.67 s, evidence panel 0.76 s, evidence download, **0 external requests, 0 console errors** |
-| Branch checks (`p08-release`) | `make check` 158 passed; `make integration` 23 passed |
-| Dependency vulnerabilities | OSV for every locked version (48 Python incl. ML and dev tools, 93 npm incl. dev): **0 known**; `npm audit`: 0 |
+| Fresh clone of the candidate `p08-release` `c17ba3b` from GitHub, empty caches | `make install` 11.0 s (downloads Python 3.13.15, locked packages, `npm ci`); `make install-ml` 1.6 s; `make check` **162 passed** + lint, format, types, build (23.5 s); `make integration` **23 passed** (49.0 s); `doctor`: database, PostGIS and schema ok. An earlier fresh clone of `p07-demo` `1f951f1` also passed (155 + 23) |
+| Demo from that clone | Package verified with its expected hash (0.36 s); loaded offline into two new, migrated databases (`ok: true`, 5,971 rows each, 65.8 s and 77.7 s) and reloaded (`ok: true`, nothing inserted, events `UNCHANGED`, 55.2 s); API health, readiness, status, observations and CSV export 200; production UI build (`vite preview`, `VITE_BASEMAP=off`) with the network refused: 57 rows in 0.75 s, evidence panel 1.7 s, evidence download, **0 external requests, 0 console errors** |
+| Dependency vulnerabilities | `release_audit.py` from that clone: OSV for every locked version (48 Python incl. ML and dev tools, 93 npm incl. dev, 28 of them in the runtime bundle): **0 known**; installed versions equal the lockfile; exit 0. `npm audit`: 0 |
 | Licences | Section 6 |
-| Secret safety | With an unreachable database and recognisable fake password, FIRMS key and reviewer token: 14 API paths (normal and review-only servers) return handled errors and no secret in bodies, headers or logs; six failing commands (ingest, P05 CLI ×2, demo build/load, migrations) print no secret. 124 tracked files: no credentials, tokens, private keys, key-bearing URLs or files over 300 KB; provider payloads are not tracked |
-| Backup and restore | `pg_dump -Fc` of the demo database 1.7 s (3.1 MB) → restore into a new database 1.4 s: 25 tables, 34,471 rows, identical content fingerprints; migration `0008`, PostGIS 3.6.4 on both; 11 API responses identical apart from their request time. Object folder archived (0.7 s, 11 MB) and restored: 3,403 content-addressed objects all match their names |
-| Rebuild from the package | Load into an empty database 50–57 s: verify 0.3 s, FIRMS 12.7 s, OSM 0.7–0.8 s, land-cover summaries recomputed from chips 28–33 s, events 8.6–10.1 s |
+| Secret safety | Tests with an unreachable database and a recognisable fake password, a well-formed fake FIRMS key and a well-formed fake reviewer token: 14 API requests on a normal and on a blind-review server each return the status of the step they test (503 at the database, 403 where withheld, 200 for liveness/status) and no secret appears in bodies, headers or logs; FIRMS provider failures carrying the key never expose it, tracebacks included; six failing commands (ingest, P05 CLI ×2, demo build/load, migrations) fail at the database and print no secret. A test mutation that logs the token makes them fail |
+| Tracked files | `docs/inventory/public-release-review.csv` (130 files at `c17ba3b`): no credentials, tokens, private keys or key-bearing URLs (the real workspace database password was also checked); largest file 80 KB; provider payloads are not tracked. Section 6 lists what needs a decision |
+| Backup and restore | `pg_dump -Fc` of the fresh-clone demo database 0.96 s (3.1 MB) → restore into a new database 1.96 s: 25 tables, 34,471 rows, identical content fingerprints; migration `0008`, PostGIS 3.6.4 on both; 11 API responses identical apart from their request time. Object folder archived and restored: 3,403 content-addressed objects all match their names. (An earlier run on the workspace demo database: 1.7 s / 1.4 s, same result) |
+| Pipeline stages (saved loads) | verify 0.3–0.4 s, FIRMS 15.6–17.3 s, OSM 0.8–0.9 s, land-cover summaries recomputed from chips 35–42 s, events 11.6–18.8 s (1.6 s when unchanged). Totals over five loads on this 2-vCPU workspace: 50–78 s |
 | API | Per P07: list 0.05 s, window export 0.04–0.05 s (57 observations), with rule outputs 3.6–3.8 s, one assessment 0.06–0.08 s, evidence export 0.22–0.28 s |
 | Satellite/provider delay | **Not measurable here.** Every file is a historical replay retrieved in bulk weeks or months after acquisition, and historical availability is unknown; the retrieval lag in the manifest reflects when this project fetched, not FIRMS latency |
 | P05 model artifacts | 10 recorded runs: every manifest hash and file hash matches. 5 reviewed-label runs `INSUFFICIENT_LABELS`, 5 weak-rule runs `DRY_RUN_NOT_EVIDENCE`. There is no evaluation to reproduce and no score to quote |
@@ -48,8 +51,8 @@ The tag name, whether to publish a GitHub release and whether to make anything p
 
 ## 4. Data card — demo package `thermoscope-demo-v1`
 
-- **Contents:** 5,971 NASA FIRMS VIIRS NOAA-20 detections for Jamnagar (69.5–70.5 E, 22–23 N) and the Punjab comparison region (74.5–75.5 E, 30–31 N): NRT 1 July–26 September 2026, SP 30 December 2025–30 June 2026, in 110 five-day files (the last SP window three days). Two OpenStreetMap Overpass extracts (retrieved 26 September 2026). 3,307 ESA WorldCover 2021 chips with summaries; 2,664 detections have no land-cover summary and show it as missing.
-- **Provenance:** every file's SHA-256, size, window, source, licence and the source database's import time and status; provider retrieval times for 108 of 110 FIRMS files. Content hash `e5117f72…0464` (workspace build). Mode: historical replay; historical availability unknown.
+- **Contents:** 5,971 NASA FIRMS VIIRS NOAA-20 detections for Jamnagar (69.5–70.5 E, 22–23 N) and the Punjab comparison region (74.5–75.5 E, 30–31 N): NRT 1 July–26 September 2026, SP 30 December 2025–30 June 2026, in 110 files (106 five-day windows and 4 three-day ones: SP 28–30 June and NRT 19–21 September for each region). Two OpenStreetMap Overpass extracts (retrieved 26 September 2026). 3,307 ESA WorldCover 2021 chips with summaries; 2,664 detections have no land-cover summary and show it as missing.
+- **Provenance:** every file's SHA-256, size, window and source, the licence and attribution of each source, and the source database's import time and status; provider retrieval times for 108 of 110 FIRMS files. Content hash `e5117f72…0464` (workspace build). Mode: historical replay; historical availability unknown.
 - **Meaning:** a detection is a satellite pixel centre with fire radiative power (MW) and brightness temperatures (K, not flame temperature); the heat can lie anywhere in the approximate pixel area. A non-detection does not prove absence (cloud, overpass gaps). OSM is volunteer-mapped and incomplete; WorldCover describes 2021.
 - **Not included:** labels, reviews, reviewer accounts, frozen case sets, features, model outputs, basemap tiles, credentials.
 - **Licences:** FIRMS (NASA open data; acknowledgement), OSM ODbL-1.0 (attribution; share-alike for derived databases), WorldCover CC-BY-4.0 (doi:10.5281/zenodo.7254221). Attribution travels in the manifest, README and every export.
@@ -62,13 +65,12 @@ The tag name, whether to publish a GitHub release and whether to make anything p
 
 ## 6. Licences and public-release blockers
 
-- **Dependencies:** permissive (MIT, BSD, Apache-2.0, ISC and similar) except `certifi` (MPL-2.0), `psycopg`/`psycopg-binary` (LGPL-3.0-only; the binary wheel bundles libpq and OpenSSL with their own notices) and the build-time CSS tool `lightningcss` (MPL-2.0; not part of the shipped bundle). All are used unmodified as libraries. The browser bundle's runtime packages are MIT/ISC/BSD (MapLibre GL BSD-3-Clause, React MIT). The PostGIS server image is GPL-2.0-licensed and runs as a separate service; distributing an image would carry its obligations. Full inventory: run `scripts/release_audit.py` (workspace report SHA-256 `472e188c…`, outside Git).
+- **Dependencies:** permissive (MIT, BSD, Apache-2.0, ISC and similar) except `certifi` (MPL-2.0), `psycopg`/`psycopg-binary` (LGPL-3.0-only) and the build-time CSS tool `lightningcss` (MPL-2.0; not part of the shipped bundle). All are used unmodified as libraries and are listed as reviewed exceptions in `scripts/release_audit.py`, which fails on any new one. The browser bundle's runtime packages are MIT/ISC/BSD (MapLibre GL BSD-3-Clause, React MIT). Binary wheels also bundle native libraries under their own licences — for example libpq and OpenSSL in `psycopg-binary`, GDAL and about 28 libraries (libcurl, OpenSSL, HDF5 …) in `rasterio`, and libgfortran (GPL-3.0+ with the GCC runtime exception) and libquadmath (LGPL-2.1+) in NumPy/SciPy — which matters only if binaries or images are redistributed. The PostGIS server image is GPL-2.0-licensed and runs as a separate service; distributing an image would carry its obligations. Report from the fresh clone: SHA-256 `e2e48a3b…` (outside Git).
 - **Map tiles:** online, the basemap uses OpenStreetMap standard tiles under the OSMF tile usage policy (attribution, no bulk or heavy use). A public or high-traffic deployment needs its own tile provider; offline, the basemap is off.
 - **Before any public repository or release (owner decision, nothing published):**
   1. Choose a code licence — the repository has none, so no reuse is granted.
-  2. Decide what personal and team information stays: team name, ID, leader name and institute appear in 15 tracked files (for example `PROJECT_STATE.md`, `docs/SUBMISSION_*.md`, `docs/REMAINING_WORK.md`) and the UI footer; `docs/SUBMISSION_PACKAGE.md` contains a local user path.
-  3. Decide whether internal process records (the contributor guide, the work contract, `docs/tasks/`) belong in a public copy.
-  4. Re-run the secret scan on the exact allowlist; keep provider data out of Git (the ignore rules already exclude `local/`, `.env*` and rasters).
+  2. Go through `docs/inventory/public-release-review.csv` (regenerate with `scripts/public_release_review.py`, identity terms kept in an ignored local file): 21 tracked files carry team or personal identity (team name, ID, leader name, institute or account handle — for example `PROJECT_STATE.md`, `docs/SUBMISSION_*.md`, `docs/REMAINING_WORK.md`, and the sidebar/footer in `frontend/src/Rail.tsx`, `Review.tsx`, `main.tsx`); `docs/SUBMISSION_PACKAGE.md` contains a local user path; 18 files are internal process records (the contributor guide, the work contract, the contributor notes, `docs/tasks/`, `docs/review/`).
+  3. Re-run that review and the secret scan on the exact allowlist; keep provider data out of Git (the ignore rules already exclude `local/`, `.env*` and rasters).
 
 ## 7. Judge-facing links (checked signed out, 28 September)
 
@@ -83,9 +85,9 @@ The tag name, whether to publish a GitHub release and whether to make anything p
 
 ## 8. Claims delta for the deck, text and video (; submission files untouched)
 
-**Now demonstrable** (after the integrator accepts `p07-demo`): an offline replay of saved real NASA FIRMS observations for two regions, loaded and served with the network refused; per-observation evidence (measurements, mapped OSM context, 2021 land cover, 180-day history, transparent rules with reasons and missing data); bounded CSV/GeoJSON evidence exports with units, provenance and licences; a map-free mode; reproducible setup from a clean clone; no known dependency vulnerabilities in the locked versions; a rehearsed database backup and restore.
+**Now demonstrable** (after the integrator accepts `p07-demo`): an offline replay of saved real NASA FIRMS observations for two regions, loaded and served with the network refused; per-observation evidence (measurements, mapped OSM context, 2021 land cover where extracted, 180-day history, transparent rules with reasons and missing data); bounded CSV/GeoJSON evidence exports with units, provenance and licences; a map-free mode; reproducible setup from a clean clone; no known dependency vulnerabilities in the locked versions; a rehearsed database backup and restore.
 
-**Suggested wording:** "A working research prototype replays genuine NASA FIRMS satellite detections with mapped industrial context, land cover and history, explains each rule-based assessment and its uncertainty, and exports the evidence with full provenance — offline if needed. The labelling and model-training pipeline is built; the model has not yet been independently evaluated."
+**Suggested wording:** "A working research prototype replays genuine NASA FIRMS satellite detections with mapped industrial context, land cover where available and detection history, explains each rule-based assessment and its uncertainty, and exports the evidence with its sources, hashes and licences — offline if needed. The labelling and model-training pipeline is built and tested, but no model has been trained on human-reviewed labels; none is served or evaluated."
 
 **Do not claim:** live or real-time monitoring, alerts, deployed or public service, AI/ML detection or accuracy, validated or confirmed industrial incidents, calibrated probabilities, offline basemaps, performance targets, all 14 regions offline (the package holds two; the full local database holds 51,354 observations across 14 regions), or that a persistent heat source is safe.
 
