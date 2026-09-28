@@ -6,7 +6,7 @@ ThermoScope is designed to combine NASA FIRMS observations, industrial infrastru
 
 **Status:** P01–P05 engineering is integrated and independently verified on the Mac. The local research pilot contains 51,354 genuine NOAA-20 observations across 14 Indian regions, backed by source receipts and PostGIS. The map/list shows measurements, dated OSM and WorldCover context, grouped episodes and sites, historical timelines, and transparent source/behaviour/review-priority rules. Those rules have uncalibrated thresholds; the app does not serve a learned classifier or confirm industrial accidents.
 
-P05 provides 10,318 frozen cases with facility-aware splits, a blind review workflow with personal sign-in, and a working XGBoost/baseline/evaluation pipeline. Human validation is deferred: there are no human reviews, no independently evaluated model and no reportable accuracy. A weak-rule run checks execution only. macOS XGBoost needs `brew install libomp`. See [current state](PROJECT_STATE.md), independent acceptance and [remaining work](docs/REMAINING_WORK.md). P06 is deferred; bounded demo improvements and release checks are next. Cloud deployment remains unbuilt. The earlier college demonstration is a separate project.
+P05 provides 10,318 frozen cases with facility-aware splits, a blind review workflow with personal sign-in, and a working XGBoost/baseline/evaluation pipeline. Human validation is deferred: there are no human reviews, no independently evaluated model and no reportable accuracy. A weak-rule run checks execution only. macOS XGBoost needs `brew install libomp`. See [current state](PROJECT_STATE.md), independent acceptance and [remaining work](docs/REMAINING_WORK.md). P06 is deferred. The bounded P07 demo (offline replay package, evidence exports, map-free mode) and the local P08 release checks are implemented on branches `p07-demo` and `p08-release`, awaiting the acceptance; see the demo runbook and [release notes](docs/RELEASE.md). Cloud deployment remains unbuilt. The earlier college demonstration is a separate project.
 
 ## Read first
 
@@ -16,6 +16,8 @@ P05 provides 10,318 frozen cases with facility-aware splits, a blind review work
 | [Architecture](docs/ARCHITECTURE.md) | Data contracts, classification, GIS, evaluation and operating design |
 | [Eight milestones](docs/BUILD_PLAN.md) | Build sequence and acceptance gates |
 | [Local development](docs/DEVELOPMENT.md) | Reproducible setup, checks, endpoints and database lifecycle |
+| Demo runbook | Offline replay package, exports, exact demo commands and click path |
+| [Release notes](docs/RELEASE.md) | Release candidate checks, data/model status cards, licences and claims |
 | [Team update](docs/TEAM_UPDATE.md) | What changed, what is built before submission and how the model will be trained |
 | [Access setup](docs/ACCESS_SETUP.md) | FIRMS, Earthdata and other prerequisites |
 | [Submission guide](docs/SUBMISSION_GUIDE.md) | Six-slide revision and demo-video outline |

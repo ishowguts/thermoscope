@@ -23,6 +23,7 @@ import hashlib
 import json
 import re
 import shutil
+import time
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -476,12 +477,22 @@ def load_package(
 ) -> dict:
     """Import a verified package as historical replay; safe to repeat. `ok` is false when any
     import ends differently from the source database."""
+    stages: dict[str, float] = {}
+    clock = time.monotonic()
     check = verify_package(directory, expect_sha256)
     if not check["ok"]:
         raise IngestError("PACKAGE_VERIFICATION_FAILED")
     manifest = json.loads((directory / "manifest.json").read_text())
     report = {"firms": {}, "inserted_rows": 0, "osm": {}, "landcover": {}, "events": {}}
     unexpected = []
+
+    def lap(stage: str):
+        nonlocal clock
+        now = time.monotonic()
+        stages[stage] = round(now - clock, 2)
+        clock = now
+
+    lap("verify")
     for entry in manifest["files"]:
         if entry["kind"] != "FIRMS_CSV":
             continue
@@ -498,6 +509,7 @@ def load_package(
         report["inserted_rows"] += result.get("inserted_rows", 0)
         if result["status"] != entry.get("source_status", "SUCCEEDED"):
             unexpected.append({"path": entry["path"], "status": result["status"]})
+    lap("firms")
     for entry in manifest["files"]:
         if entry["kind"] != "OSM_OVERPASS_JSON":
             continue
@@ -512,7 +524,9 @@ def load_package(
         report["osm"][entry["region"]] = result.get("status")
         if result.get("status") not in {"SUCCEEDED", "PARTIAL"}:
             unexpected.append({"path": entry["path"], "status": result.get("status")})
+    lap("osm")
     report["landcover"] = restore_landcover(settings, directory)
+    lap("landcover")
     if build_events:
         for region in manifest["regions"]:
             result = build_event_run(settings, region, DataMode.HISTORICAL_REPLAY)
@@ -521,7 +535,9 @@ def load_package(
             }
             if result.get("status") not in {"SUCCEEDED", "UNCHANGED"}:  # UNCHANGED on reload
                 unexpected.append({"events": region, "status": result.get("status")})
+    lap("events")
     return report | {
+        "stage_seconds": stages,
         "ok": not unexpected,
         "unexpected": unexpected,
         "package": manifest["name"],

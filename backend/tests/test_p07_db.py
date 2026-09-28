@@ -222,6 +222,7 @@ def test_demo_package_round_trip_is_verified_offline_and_repeatable(
     offline(monkeypatch)
     loaded = load_package(target, package, expect_sha256=manifest["content_sha256"])
     assert loaded["ok"] and loaded["unexpected"] == []
+    assert set(loaded["stage_seconds"]) == {"verify", "firms", "osm", "landcover", "events"}
     assert loaded["firms"] == {"SUCCEEDED": 2} and loaded["inserted_rows"] == 4
     assert loaded["osm"] == {"jamnagar": "PARTIAL"}  # the fixture's two invalid shapes
     summaries = loaded["landcover"]["summaries"]
