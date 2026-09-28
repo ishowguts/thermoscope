@@ -302,3 +302,18 @@ Accepted implementation `d9ca117`, incorporating `3b12068` / `4b4f375`. Initial 
 - Health/status/case-set/models HTTP 200; protected queue/identity HTTP 401 without credentials. No score fields in model-list responses. Browser: v2 plus superseded v1, no-account sign-in status, real Jharia observations and selected mine-context example, measurements/units/provenance, WorldCover and historical rule assessment. Warnings/errors: none in the observed browser flow. This does not independently confirm the heat source.
 
 Acceptance report and local evidence/recovery paths: internal record P05-MAC-ACCEPTANCE. Human validation explicitly deferred (ADR-024). No P06–P08 application change, submission artifact refresh, public deployment or portal mutation in this checkpoint. v2's separate-branch P05 wording remains to be refreshed before approval. No old author commits, data volumes or verification clones were removed.
+
+## 28 September 2026, 17:25–19:30 IST — P07-SUB-001 offline demo and evidence exports (branch `p07-demo`)
+
+Base `c1d48b8`; commits `8f410e5`, `31504f0` and documentation. Linux x86_64 cloud workspace (2 vCPU, Python 3.13.15, uv 0.12.19, Node 24.21.0, digest-pinned PostGIS 18-3.6) with its full historical-replay database (51,354 observations). The Mac checkout, its database and the submission files were not touched. Full table, screenshot and download hashes: internal record P07-SUBMISSION-DEMO (Result); commands: `docs/DEMO_RUNBOOK.md`.
+
+| Check | Observed result | Scope / limitation |
+|---|---|---|
+| `make check` | Ruff; **154 passed**; Prettier; `tsc`; Vite build | Map chunk warning unchanged |
+| `make integration` | **23 passed** (4 new P07 PostGIS tests) | Disposable databases |
+| GitHub Actions | `8f410e5`: run [36422194564](https://github.com/ishowguts/thermoscope/actions/runs/36422194564) success | Later commits: see the handoff entry |
+| Demo package | `thermoscope-demo-v1`: 186 listed files, 1,445,606 bytes, content `52a29fdf…56f0`, identical on rebuild; inventory `inventory/demo-v1-files.csv` | Jamnagar, Punjab; historical replay |
+| Offline load | New database, every non-loopback connection refused: 110 FIRMS files / 5,971 rows, 2 OSM extracts, 73/73 land-cover summaries reproduced from chips, events rebuilt; 24.4 s. Versus the full database, 131 NRT observations: 0 differences in rule labels, inputs, reasons, missing data, association, land cover, event size or timeline | Workspace, not the Mac |
+| Browser (headless Chromium, network refused by dead proxy and DNS blackhole) | Five demo cases, evidence/window exports, empty region, keyboard, 1920/1366/390 widths without horizontal scroll, WebGL-disabled fallback; 54 tile requests attempted, 0 completed; after the fix, reload with the basemap remembered off makes 0 external requests; online partial tile failure keeps the basemap with a notice | Machine not physically disconnected; Mac Wi-Fi-off run pending |
+| Timings | API list 0.05–0.07 s; window export 0.05–0.06 s (57 obs), with rules 3.9–4.0 s; assessment 0.06–0.09 s; evidence 0.24–0.32 s; first rows in the browser 0.84–1.8 s | Measured, no targets |
+| Secret scan | Branch diff, tracked files, package and downloads: 0 password matches, 0 FIRMS API URLs | FIRMS key not present in this workspace |
