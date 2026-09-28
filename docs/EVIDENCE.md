@@ -303,7 +303,7 @@ Accepted implementation `d9ca117`, incorporating `3b12068` / `4b4f375`. Initial 
 
 Acceptance report and local evidence/recovery paths: internal record P05-MAC-ACCEPTANCE. Human validation explicitly deferred (ADR-024). No P06–P08 application change, submission artifact refresh, public deployment or portal mutation in this checkpoint. v2's separate-branch P05 wording remains to be refreshed before approval. No old author commits, data volumes or verification clones were removed.
 
-## 28 September 2026, 17:25–19:15 IST — P07-SUB-001 offline demo and evidence exports (branch `p07-demo`)
+## 28 September 2026, 17:25–19:10 IST — P07-SUB-001 offline demo and evidence exports (branch `p07-demo`)
 
 Base `c1d48b8`; branch commits listed in the handoff entry. Linux x86_64 cloud workspace (2 vCPU, Python 3.13.15, uv 0.12.19, Node 24.21.0, digest-pinned PostGIS 18-3.6) with its full historical-replay database (51,354 observations). The Mac checkout, its database and the submission files were not touched. Full table, screenshot and download hashes: internal record P07-SUBMISSION-DEMO (Result); commands: `docs/DEMO_RUNBOOK.md`.
 
@@ -317,4 +317,4 @@ Base `c1d48b8`; branch commits listed in the handoff entry. Linux x86_64 cloud w
 | Browser (headless Chromium, network refused by dead proxy and DNS blackhole) | Five demo cases, evidence/window exports, empty region, keyboard, 1920/1366/390 widths without horizontal scroll, WebGL-disabled fallback; 54 tile requests attempted, 0 completed; reload with the fallback remembered makes 0 external requests; online partial tile failure keeps the basemap with a notice | Machine not physically disconnected; Mac Wi-Fi-off run pending |
 | Timings | API list 0.05 s; window export 0.04–0.05 s (57 obs), with rules 3.6–3.8 s; assessment 0.06–0.08 s; evidence 0.22–0.28 s; first rows in the browser 0.8–1.8 s | Measured, no targets |
 | Secret scan | Branch diff, tracked files, package and downloads: 0 password matches, 0 FIRMS API URLs | FIRMS key not present in this workspace |
-| GitHub Actions | `8f410e5`: run [36422194564](https://github.com/ishowguts/thermoscope/actions/runs/36422194564) success; final commit: see the handoff entry | Ubuntu |
+| GitHub Actions | `8f410e5` run [36422194564](https://github.com/ishowguts/thermoscope/actions/runs/36422194564), `28bb9f9` run [36427057590](https://github.com/ishowguts/thermoscope/actions/runs/36427057590), tested tip `ab370da` run [36429320251](https://github.com/ishowguts/thermoscope/actions/runs/36429320251): all success (frozen install, ML install, `make check`, `make integration`) | Ubuntu |
