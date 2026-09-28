@@ -87,6 +87,48 @@ export async function readApi<T>(url: string, signal: AbortSignal): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+/** What this build serves; constant facts, shown so no reader mistakes rules for a model. */
+export type ServiceStatus = {
+  rules_status?: string;
+  classifier_status?: string;
+  human_validation?: string;
+  review_only?: boolean;
+  exports?: string;
+};
+
+/** Server-side export limits (evidence-export-v1); larger requests are refused, not cut. */
+export const EXPORT_LIMITS = { observations: 2000, withRules: 100 };
+
+/** Fetches an export and hands it to the browser as a download; errors carry the reason. */
+export async function downloadExport(
+  url: string,
+): Promise<{ filename: string; count: string | null }> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(
+      payload.message ??
+        "The export could not be created. Check the local API and database.",
+    );
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const filename =
+    /filename="([^"]+)"/.exec(disposition)?.[1] ?? "thermoscope-export";
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 2000);
+  return {
+    filename,
+    count: response.headers.get("X-ThermoScope-Observations"),
+  };
+}
+
 /** Thrown when the personal reviewer token is missing, wrong, rotated or deactivated. */
 export class SignInRequired extends Error {}
 
