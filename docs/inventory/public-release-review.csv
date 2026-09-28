@@ -1,112 +1,113 @@
-path,bytes,category,needs_decision,suggested
-.env.example,755,configuration,,keep once a code licence is chosen
-.github/workflows/check.yml,1476,configuration,,keep once a code licence is chosen
-.gitignore,596,configuration,,keep once a code licence is chosen
-.node-version,8,configuration,,keep once a code licence is chosen
-.python-version,8,configuration,,keep once a code licence is chosen
-DECISIONS.md,37151,documentation,,keep once a code licence is chosen
-ENVIRONMENT.md,12397,documentation,,keep once a code licence is chosen
-Makefile,1475,configuration,,keep once a code licence is chosen
-PROJECT_STATE.md,7509,documentation,team or personal identity,decide: team or personal identity
-README.md,3985,documentation,,keep once a code licence is chosen
-alembic.ini,94,configuration,,keep once a code licence is chosen
-backend/migrations/env.py,818,backend source,,keep once a code licence is chosen
-backend/migrations/script.py.mako,356,backend source,,keep once a code licence is chosen
-backend/migrations/versions/0001_source_snapshots.py,1240,backend source,,keep once a code licence is chosen
-backend/migrations/versions/0002_observations.py,3698,backend source,,keep once a code licence is chosen
-backend/migrations/versions/0003_facility_context.py,3745,backend source,,keep once a code licence is chosen
-backend/migrations/versions/0004_events_sites.py,4499,backend source,,keep once a code licence is chosen
-backend/migrations/versions/0005_landcover.py,1276,backend source,,keep once a code licence is chosen
-backend/migrations/versions/0006_labels_models.py,5234,backend source,,keep once a code licence is chosen
-backend/migrations/versions/0007_review_integrity.py,1585,backend source,,keep once a code licence is chosen
-backend/migrations/versions/0008_reviewer_accounts.py,4906,backend source,,keep once a code licence is chosen
-backend/tests/conftest.py,1320,tests,,keep once a code licence is chosen
-backend/tests/test_assessment.py,9319,tests,,keep once a code licence is chosen
-backend/tests/test_assessment_db.py,5577,tests,,keep once a code licence is chosen
-backend/tests/test_context.py,9257,tests,,keep once a code licence is chosen
-backend/tests/test_contracts.py,2595,tests,,keep once a code licence is chosen
-backend/tests/test_events.py,5398,tests,,keep once a code licence is chosen
-backend/tests/test_events_db.py,5931,tests,,keep once a code licence is chosen
-backend/tests/test_exports.py,9031,tests,,keep once a code licence is chosen
-backend/tests/test_firms.py,6056,tests,,keep once a code licence is chosen
-backend/tests/test_health.py,1746,tests,,keep once a code licence is chosen
-backend/tests/test_ingestion.py,6520,tests,,keep once a code licence is chosen
-backend/tests/test_labels.py,16934,tests,,keep once a code licence is chosen
-backend/tests/test_landcover.py,8635,tests,,keep once a code licence is chosen
-backend/tests/test_ml.py,13488,tests,,keep once a code licence is chosen
-backend/tests/test_osm.py,7644,tests,,keep once a code licence is chosen
-backend/tests/test_p05_db.py,20487,tests,,keep once a code licence is chosen
-backend/tests/test_p05_stream.py,5292,tests,,keep once a code licence is chosen
-backend/tests/test_p07_db.py,21495,tests,,keep once a code licence is chosen
-backend/tests/test_postgis.py,2190,tests,,keep once a code licence is chosen
-backend/tests/test_release_audit.py,1502,tests,,keep once a code licence is chosen
-backend/tests/test_release_secrets.py,6115,tests,,keep once a code licence is chosen
-backend/tests/test_review_regressions.py,5152,tests,,keep once a code licence is chosen
-backend/thermoscope/__init__.py,31,backend source,,keep once a code licence is chosen
-backend/thermoscope/assessment.py,32353,backend source,,keep once a code licence is chosen
-backend/thermoscope/config.py,1765,backend source,,keep once a code licence is chosen
-backend/thermoscope/context.py,13440,backend source,,keep once a code licence is chosen
-backend/thermoscope/context_cli.py,2983,backend source,,keep once a code licence is chosen
-backend/thermoscope/context_ingestion.py,11555,backend source,,keep once a code licence is chosen
-backend/thermoscope/contracts.py,3981,backend source,,keep once a code licence is chosen
-backend/thermoscope/database.py,2026,backend source,,keep once a code licence is chosen
-backend/thermoscope/events.py,27862,backend source,,keep once a code licence is chosen
-backend/thermoscope/exports.py,20615,backend source,,keep once a code licence is chosen
-backend/thermoscope/firms.py,8173,backend source,,keep once a code licence is chosen
-backend/thermoscope/ingest.py,2305,backend source,,keep once a code licence is chosen
-backend/thermoscope/ingestion.py,9576,backend source,,keep once a code licence is chosen
-backend/thermoscope/labels.py,60791,backend source,,keep once a code licence is chosen
-backend/thermoscope/landcover.py,18271,backend source,,keep once a code licence is chosen
-backend/thermoscope/main.py,21525,backend source,,keep once a code licence is chosen
-backend/thermoscope/ml.py,49300,backend source,,keep once a code licence is chosen
-backend/thermoscope/ml_cli.py,7688,backend source,,keep once a code licence is chosen
-backend/thermoscope/object_store.py,1461,backend source,,keep once a code licence is chosen
-backend/thermoscope/observations.py,7237,backend source,,keep once a code licence is chosen
-backend/thermoscope/osm.py,10212,backend source,,keep once a code licence is chosen
-backend/thermoscope/regions.py,3364,backend source,,keep once a code licence is chosen
-backend/thermoscope/replay.py,28738,backend source,,keep once a code licence is chosen
-backend/thermoscope/reviewers.py,7499,backend source,,keep once a code licence is chosen
-compose.yaml,605,configuration,,keep once a code licence is chosen
-docs/00-BRIEFING.md,19581,documentation,team or personal identity,decide: team or personal identity
-docs/ACCESS_SETUP.md,5465,documentation,team or personal identity,decide: team or personal identity
-docs/ARCHITECTURE.md,31256,documentation,,keep once a code licence is chosen
-docs/AUDIT.md,5800,documentation,,keep once a code licence is chosen
-docs/BUILD_PLAN.md,7038,documentation,,keep once a code licence is chosen
-docs/COVERAGE_INVENTORY.md,22575,documentation,,keep once a code licence is chosen
-docs/DATA_SOURCES.md,8712,documentation,,keep once a code licence is chosen
-docs/DEVELOPMENT.md,16567,documentation,,keep once a code licence is chosen
-docs/EVIDENCE.md,58888,documentation,team or personal identity,decide: team or personal identity
-docs/LEADER_ACTIONS.md,2973,documentation,team or personal identity,decide: team or personal identity
-docs/RELEASE.md,11976,documentation,team or personal identity,decide: team or personal identity
-docs/REMAINING_WORK.md,16051,documentation,team or personal identity,decide: team or personal identity
-docs/RESEARCH.md,7229,documentation,,keep once a code licence is chosen
-docs/SUBMISSION_DETAILS.md,2926,documentation,team or personal identity,decide: team or personal identity
-docs/SUBMISSION_GUIDE.md,10685,documentation,team or personal identity,decide: team or personal identity
-docs/SUBMISSION_PACKAGE.md,4430,documentation,team or personal identity; local user path,decide: team or personal identity; local user path
-docs/TEAM_UPDATE.md,3899,documentation,team or personal identity,decide: team or personal identity
-docs/inventory/demo-v1-files.csv,27408,data inventory (hashes and dates of public source files),,keep once a code licence is chosen
-docs/inventory/p05-backfill-files.csv,43033,data inventory (hashes and dates of public source files),,keep once a code licence is chosen
-docs/inventory/p05-firms-files.csv,79733,data inventory (hashes and dates of public source files),,keep once a code licence is chosen
-frontend/index.html,410,frontend source/config,,keep once a code licence is chosen
-frontend/package-lock.json,50397,frontend source/config,,keep once a code licence is chosen
-frontend/package.json,700,frontend source/config,,keep once a code licence is chosen
-frontend/src/MapView.tsx,11827,frontend source/config,,keep once a code licence is chosen
-frontend/src/Rail.tsx,1164,frontend source/config,team or personal identity,decide: team or personal identity
-frontend/src/Review.tsx,32935,frontend source/config,team or personal identity,decide: team or personal identity
-frontend/src/Timeline.tsx,8381,frontend source/config,,keep once a code licence is chosen
-frontend/src/api.ts,17370,frontend source/config,,keep once a code licence is chosen
-frontend/src/env.d.ts,38,frontend source/config,,keep once a code licence is chosen
-frontend/src/main.tsx,40038,frontend source/config,team or personal identity,decide: team or personal identity
-frontend/src/style.css,21270,frontend source/config,,keep once a code licence is chosen
-frontend/tsconfig.json,365,frontend source/config,,keep once a code licence is chosen
-frontend/vite.config.ts,190,frontend source/config,,keep once a code licence is chosen
-pyproject.toml,1127,configuration,,keep once a code licence is chosen
-scripts/configure_local.py,1543,backend source,,keep once a code licence is chosen
-scripts/demo_package.py,12132,backend source,,keep once a code licence is chosen
-scripts/doctor.py,713,backend source,,keep once a code licence is chosen
-scripts/import_saved.py,3168,backend source,,keep once a code licence is chosen
-scripts/public_release_review.py,4297,backend source,,keep once a code licence is chosen
-scripts/release_audit.py,10231,backend source,,keep once a code licence is chosen
-scripts/run.sh,457,backend source,,keep once a code licence is chosen
-scripts/verify_p05_mac.sh,6713,backend source,,keep once a code licence is chosen
-uv.lock,72383,lockfile,,keep once a code licence is chosen
+path,commit,bytes,category,needs_decision,suggested
+.env.example,9ccc49c,755,configuration,,keep once a code licence is chosen
+.github/workflows/check.yml,9ccc49c,1476,configuration,,keep once a code licence is chosen
+.gitignore,9ccc49c,596,configuration,,keep once a code licence is chosen
+.node-version,9ccc49c,8,configuration,,keep once a code licence is chosen
+.python-version,9ccc49c,8,configuration,,keep once a code licence is chosen
+DECISIONS.md,9ccc49c,37151,documentation,,keep once a code licence is chosen
+ENVIRONMENT.md,9ccc49c,12397,documentation,,keep once a code licence is chosen
+Makefile,9ccc49c,1475,configuration,,keep once a code licence is chosen
+PROJECT_STATE.md,9ccc49c,7719,documentation,team or personal identity,decide: team or personal identity
+README.md,9ccc49c,3985,documentation,,keep once a code licence is chosen
+alembic.ini,9ccc49c,94,configuration,,keep once a code licence is chosen
+backend/migrations/env.py,9ccc49c,818,backend source,,keep once a code licence is chosen
+backend/migrations/script.py.mako,9ccc49c,356,backend source,,keep once a code licence is chosen
+backend/migrations/versions/0001_source_snapshots.py,9ccc49c,1240,backend source,,keep once a code licence is chosen
+backend/migrations/versions/0002_observations.py,9ccc49c,3698,backend source,,keep once a code licence is chosen
+backend/migrations/versions/0003_facility_context.py,9ccc49c,3745,backend source,,keep once a code licence is chosen
+backend/migrations/versions/0004_events_sites.py,9ccc49c,4499,backend source,,keep once a code licence is chosen
+backend/migrations/versions/0005_landcover.py,9ccc49c,1276,backend source,,keep once a code licence is chosen
+backend/migrations/versions/0006_labels_models.py,9ccc49c,5234,backend source,,keep once a code licence is chosen
+backend/migrations/versions/0007_review_integrity.py,9ccc49c,1585,backend source,,keep once a code licence is chosen
+backend/migrations/versions/0008_reviewer_accounts.py,9ccc49c,4906,backend source,,keep once a code licence is chosen
+backend/tests/conftest.py,9ccc49c,1320,tests,,keep once a code licence is chosen
+backend/tests/test_assessment.py,9ccc49c,9319,tests,,keep once a code licence is chosen
+backend/tests/test_assessment_db.py,9ccc49c,5577,tests,,keep once a code licence is chosen
+backend/tests/test_context.py,9ccc49c,9257,tests,,keep once a code licence is chosen
+backend/tests/test_contracts.py,9ccc49c,2595,tests,,keep once a code licence is chosen
+backend/tests/test_events.py,9ccc49c,5398,tests,,keep once a code licence is chosen
+backend/tests/test_events_db.py,9ccc49c,5931,tests,,keep once a code licence is chosen
+backend/tests/test_exports.py,9ccc49c,9031,tests,,keep once a code licence is chosen
+backend/tests/test_firms.py,9ccc49c,6056,tests,,keep once a code licence is chosen
+backend/tests/test_health.py,9ccc49c,1746,tests,,keep once a code licence is chosen
+backend/tests/test_ingestion.py,9ccc49c,6520,tests,,keep once a code licence is chosen
+backend/tests/test_labels.py,9ccc49c,16934,tests,,keep once a code licence is chosen
+backend/tests/test_landcover.py,9ccc49c,8635,tests,,keep once a code licence is chosen
+backend/tests/test_ml.py,9ccc49c,13488,tests,,keep once a code licence is chosen
+backend/tests/test_osm.py,9ccc49c,7644,tests,,keep once a code licence is chosen
+backend/tests/test_p05_db.py,9ccc49c,20487,tests,,keep once a code licence is chosen
+backend/tests/test_p05_stream.py,9ccc49c,5292,tests,,keep once a code licence is chosen
+backend/tests/test_p07_db.py,9ccc49c,21495,tests,,keep once a code licence is chosen
+backend/tests/test_postgis.py,9ccc49c,2190,tests,,keep once a code licence is chosen
+backend/tests/test_release_audit.py,9ccc49c,4631,tests,,keep once a code licence is chosen
+backend/tests/test_release_secrets.py,9ccc49c,6139,tests,,keep once a code licence is chosen
+backend/tests/test_review_regressions.py,9ccc49c,5152,tests,,keep once a code licence is chosen
+backend/thermoscope/__init__.py,9ccc49c,31,backend source,,keep once a code licence is chosen
+backend/thermoscope/assessment.py,9ccc49c,32353,backend source,,keep once a code licence is chosen
+backend/thermoscope/config.py,9ccc49c,1765,backend source,,keep once a code licence is chosen
+backend/thermoscope/context.py,9ccc49c,13440,backend source,,keep once a code licence is chosen
+backend/thermoscope/context_cli.py,9ccc49c,3167,backend source,,keep once a code licence is chosen
+backend/thermoscope/context_ingestion.py,9ccc49c,11555,backend source,,keep once a code licence is chosen
+backend/thermoscope/contracts.py,9ccc49c,3981,backend source,,keep once a code licence is chosen
+backend/thermoscope/database.py,9ccc49c,2026,backend source,,keep once a code licence is chosen
+backend/thermoscope/events.py,9ccc49c,27862,backend source,,keep once a code licence is chosen
+backend/thermoscope/exports.py,9ccc49c,20615,backend source,,keep once a code licence is chosen
+backend/thermoscope/firms.py,9ccc49c,8173,backend source,,keep once a code licence is chosen
+backend/thermoscope/ingest.py,9ccc49c,2489,backend source,,keep once a code licence is chosen
+backend/thermoscope/ingestion.py,9ccc49c,9576,backend source,,keep once a code licence is chosen
+backend/thermoscope/labels.py,9ccc49c,60791,backend source,,keep once a code licence is chosen
+backend/thermoscope/landcover.py,9ccc49c,18271,backend source,,keep once a code licence is chosen
+backend/thermoscope/main.py,9ccc49c,21525,backend source,,keep once a code licence is chosen
+backend/thermoscope/ml.py,9ccc49c,49300,backend source,,keep once a code licence is chosen
+backend/thermoscope/ml_cli.py,9ccc49c,7688,backend source,,keep once a code licence is chosen
+backend/thermoscope/object_store.py,9ccc49c,1461,backend source,,keep once a code licence is chosen
+backend/thermoscope/observations.py,9ccc49c,7237,backend source,,keep once a code licence is chosen
+backend/thermoscope/osm.py,9ccc49c,10212,backend source,,keep once a code licence is chosen
+backend/thermoscope/regions.py,9ccc49c,3364,backend source,,keep once a code licence is chosen
+backend/thermoscope/replay.py,9ccc49c,28738,backend source,,keep once a code licence is chosen
+backend/thermoscope/reviewers.py,9ccc49c,7499,backend source,,keep once a code licence is chosen
+compose.yaml,9ccc49c,605,configuration,,keep once a code licence is chosen
+docs/00-BRIEFING.md,9ccc49c,19581,documentation,team or personal identity,decide: team or personal identity
+docs/ACCESS_SETUP.md,9ccc49c,5465,documentation,team or personal identity,decide: team or personal identity
+docs/ARCHITECTURE.md,9ccc49c,31256,documentation,,keep once a code licence is chosen
+docs/AUDIT.md,9ccc49c,5800,documentation,,keep once a code licence is chosen
+docs/BUILD_PLAN.md,9ccc49c,7038,documentation,,keep once a code licence is chosen
+docs/COVERAGE_INVENTORY.md,9ccc49c,22575,documentation,,keep once a code licence is chosen
+docs/DATA_SOURCES.md,9ccc49c,8712,documentation,,keep once a code licence is chosen
+docs/DEVELOPMENT.md,9ccc49c,16567,documentation,,keep once a code licence is chosen
+docs/EVIDENCE.md,9ccc49c,61618,documentation,team or personal identity,decide: team or personal identity
+docs/LEADER_ACTIONS.md,9ccc49c,2973,documentation,team or personal identity,decide: team or personal identity
+docs/RELEASE.md,9ccc49c,14126,documentation,team or personal identity,decide: team or personal identity
+docs/REMAINING_WORK.md,9ccc49c,16051,documentation,team or personal identity,decide: team or personal identity
+docs/RESEARCH.md,9ccc49c,7229,documentation,,keep once a code licence is chosen
+docs/SUBMISSION_DETAILS.md,9ccc49c,2926,documentation,team or personal identity,decide: team or personal identity
+docs/SUBMISSION_GUIDE.md,9ccc49c,10685,documentation,team or personal identity,decide: team or personal identity
+docs/SUBMISSION_PACKAGE.md,9ccc49c,4430,documentation,team or personal identity; local user path,decide: team or personal identity; local user path
+docs/TEAM_UPDATE.md,9ccc49c,3899,documentation,team or personal identity,decide: team or personal identity
+docs/inventory/demo-v1-files.csv,9ccc49c,27408,data inventory (hashes and dates of public source files),,keep once a code licence is chosen
+docs/inventory/p05-backfill-files.csv,9ccc49c,43033,data inventory (hashes and dates of public source files),,keep once a code licence is chosen
+docs/inventory/p05-firms-files.csv,9ccc49c,79733,data inventory (hashes and dates of public source files),,keep once a code licence is chosen
+docs/inventory/public-release-review.csv,9ccc49c,12141,this release review,,keep once a code licence is chosen
+frontend/index.html,9ccc49c,410,frontend source/config,,keep once a code licence is chosen
+frontend/package-lock.json,9ccc49c,50397,frontend source/config,,keep once a code licence is chosen
+frontend/package.json,9ccc49c,700,frontend source/config,,keep once a code licence is chosen
+frontend/src/MapView.tsx,9ccc49c,11827,frontend source/config,,keep once a code licence is chosen
+frontend/src/Rail.tsx,9ccc49c,1164,frontend source/config,team or personal identity,decide: team or personal identity
+frontend/src/Review.tsx,9ccc49c,32935,frontend source/config,team or personal identity,decide: team or personal identity
+frontend/src/Timeline.tsx,9ccc49c,8381,frontend source/config,,keep once a code licence is chosen
+frontend/src/api.ts,9ccc49c,17370,frontend source/config,,keep once a code licence is chosen
+frontend/src/env.d.ts,9ccc49c,38,frontend source/config,,keep once a code licence is chosen
+frontend/src/main.tsx,9ccc49c,40038,frontend source/config,team or personal identity,decide: team or personal identity
+frontend/src/style.css,9ccc49c,21270,frontend source/config,,keep once a code licence is chosen
+frontend/tsconfig.json,9ccc49c,365,frontend source/config,,keep once a code licence is chosen
+frontend/vite.config.ts,9ccc49c,190,frontend source/config,,keep once a code licence is chosen
+pyproject.toml,9ccc49c,1127,configuration,,keep once a code licence is chosen
+scripts/configure_local.py,9ccc49c,1543,backend source,,keep once a code licence is chosen
+scripts/demo_package.py,9ccc49c,12223,backend source,,keep once a code licence is chosen
+scripts/doctor.py,9ccc49c,713,backend source,,keep once a code licence is chosen
+scripts/import_saved.py,9ccc49c,3168,backend source,,keep once a code licence is chosen
+scripts/public_release_review.py,9ccc49c,5608,backend source,,keep once a code licence is chosen
+scripts/release_audit.py,9ccc49c,10465,backend source,,keep once a code licence is chosen
+scripts/run.sh,9ccc49c,457,backend source,,keep once a code licence is chosen
+scripts/verify_p05_mac.sh,9ccc49c,6713,backend source,,keep once a code licence is chosen
+uv.lock,9ccc49c,72383,lockfile,,keep once a code licence is chosen
