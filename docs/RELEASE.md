@@ -1,10 +1,10 @@
-# ThermoScope demo release — candidate notes
+# ThermoScope demo release `v0.8.0-demo`
 
-Prepared on 28 September 2026 IST under `P08-REL-001` (internal record P08-RELEASE-CHECKS). **Status: candidate, not frozen.** The release is whatever the integrator integrates and tags after its own verification; nothing here is a tag, a public release or a deployment.
+Prepared on 28 September 2026 IST under `P08-REL-001` (internal record P08-RELEASE-CHECKS). **Status: released as tag `v0.8.0-demo` in the private repository on 29 September 2026**, integrated with the owner's explicit approval because the integrator was unavailable. It is not a public release, a GitHub release page or a deployment.
 
-## 1. What the candidate is
+## 1. What the release is
 
-`main` (`c1d48b8`, accepted P01–P05) plus two branches awaiting the acceptance:
+`main` (`c1d48b8`, accepted P01–P05) plus two branches, merged in `1e22d54` after two independent reviews of each and green CI:
 
 | Branch | Adds |
 | --- | --- |
@@ -13,9 +13,9 @@ Prepared on 28 September 2026 IST under `P08-REL-001` (internal record P08-RELEA
 
 It is a **research demonstration of saved real observations**: NASA FIRMS VIIRS NOAA-20 detections with dated OpenStreetMap and ESA WorldCover context, 180-day history and transparent, uncalibrated source/behaviour/review-priority rules. It does not monitor live, send alerts, serve a learned model, report accuracy or confirm incidents. Human validation is deferred (ADR-024).
 
-## 2. Freezing it
+## 2. How it was frozen
 
-Review both branches in a separate worktree first. The merge itself happens where the integrator keeps `main` checked out (the canonical Mac checkout), after its usual lock-free status check and backup:
+On 29 September the branches were merged into `main` in a cloud clone (`1e22d54`), re-ran `make check` and `make integration`, updated these records, pushed, waited for CI and tagged the pushed tip `v0.8.0-demo`; `the handoff log` records the commits and CI run. The Mac checkout is brought up to date separately (`local/p08-verify/verify_release_mac.sh`, then `git pull --ff-only`). The general procedure, for a later release:
 
 ```bash
 git fetch origin
