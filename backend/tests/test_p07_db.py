@@ -40,6 +40,7 @@ from thermoscope.replay import (
     build_package,
     content_digest,
     load_package,
+    readme,
     restore_landcover,
     verify_package,
 )
@@ -174,8 +175,9 @@ def test_demo_package_round_trip_is_verified_offline_and_repeatable(
     assert manifest["sources"]["OPENSTREETMAP"]["license"] == "ODbL-1.0"
     assert manifest["sources"]["ESA_WORLDCOVER"]["license"] == "CC-BY-4.0"
     assert all(len(entry["sha256"]) == 64 for entry in manifest["files"])
-    readme = (package / "README.txt").read_text()
-    assert "Load (offline" in readme and f"--expect-sha256 {manifest['content_sha256']}" in readme
+    readme_text = (package / "README.txt").read_text()
+    assert "Load (offline" in readme_text
+    assert f"--expect-sha256 {manifest['content_sha256']}" in readme_text
     assert verify_package(package)["ok"]
     with pytest.raises(FileExistsError):
         build_package(settings, out, "fixture-demo", ["jamnagar"], [], osm_dir)
@@ -194,6 +196,8 @@ def test_demo_package_round_trip_is_verified_offline_and_repeatable(
         ("UNSAFE_PATH", lambda p: rewrite(p, lambda files: files[0].update(path=str(outside)))),
         ("INVALID_ENTRY", lambda p: rewrite(p, lambda files: first_firms(files).update(
             region="nowhere"))),
+        ("CONTENT_DIGEST_MISMATCH", lambda p: edit_manifest(p, regions=[])),
+        ("README_NOT_FROM_MANIFEST", lambda p: (p / "README.txt").write_text("Public domain\n")),
     ):  # fmt: skip
         copy = tmp_path / f"tampered-{problem}-{uuid4().hex[:6]}"
         shutil.copytree(package, copy)
@@ -228,6 +232,7 @@ def test_demo_package_round_trip_is_verified_offline_and_repeatable(
         assert labels(target, observation_id) == labels(settings, observation_id)
 
     again = load_package(target, package)
+    assert again["ok"] and again["unexpected"] == []  # events report UNCHANGED on a reload
     assert again["inserted_rows"] == 0 and again["landcover"]["already_present"] == summaries
     assert observation_ids(target) == observation_ids(settings)
 
@@ -256,12 +261,18 @@ def first_firms(files):
     return next(entry for entry in files if entry["kind"] == "FIRMS_CSV")
 
 
+def edit_manifest(package, **fields):
+    manifest = json.loads((package / "manifest.json").read_text())
+    (package / "manifest.json").write_text(json.dumps(manifest | fields))
+
+
 def rewrite(package, change):
     """Edit manifest entries and recompute its digest, as someone editing a copy could."""
     manifest = json.loads((package / "manifest.json").read_text())
     change(manifest["files"])
-    manifest["content_sha256"] = content_digest(manifest["files"])
+    manifest["content_sha256"] = content_digest(manifest)
     (package / "manifest.json").write_text(json.dumps(manifest))
+    (package / "README.txt").write_text(readme(manifest))
 
 
 def test_package_build_refuses_a_credential_in_a_saved_file(source, tmp_path):

@@ -61,6 +61,8 @@ def forbid_network():
         "getaddrinfo": socket.getaddrinfo,
         "gethostbyname": socket.gethostbyname,
         "gethostbyname_ex": socket.gethostbyname_ex,
+        "gethostbyaddr": socket.gethostbyaddr,
+        "getnameinfo": socket.getnameinfo,
     }
 
     def local(address) -> bool:
@@ -109,10 +111,29 @@ def forbid_network():
     socket.getaddrinfo = lookup("getaddrinfo")
     socket.gethostbyname = lookup("gethostbyname")
     socket.gethostbyname_ex = lookup("gethostbyname_ex")
+    socket.gethostbyaddr = lookup("gethostbyaddr")
+
+    def getnameinfo(address, flags):
+        if not local(address):
+            refuse("name lookup for", address[0])
+        return original["getnameinfo"](address, flags)
+
+    socket.getnameinfo = getnameinfo
     for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy",
                  "all_proxy", "GDAL_HTTP_PROXY"):  # fmt: skip
         os.environ[name] = DEAD_PROXY
     os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1,localhost,::1"
+
+
+def loopback_database(url) -> bool:
+    """The server and any libpq host/hostaddr override in the URL are on this machine (a
+    missing host means a local socket)."""
+    hosts = [url.host]
+    for key in ("host", "hostaddr"):
+        value = url.query.get(key)
+        for item in value if isinstance(value, tuple) else [value] if value else []:
+            hosts += str(item).split(",")
+    return all(h is None or str(h).startswith("/") or _loopback_host(h) for h in hosts)
 
 
 def configured_database():
@@ -130,7 +151,7 @@ def use_database(name: str, create: bool) -> None:
     if not name.replace("_", "").isalnum() or not name.startswith("thermoscope_"):
         raise SystemExit("--database must look like thermoscope_<name>")
     url = configured_database()
-    if not _loopback_host(url.host):
+    if not loopback_database(url):
         raise SystemExit("demo databases are only created and used on a loopback server")
     if name == url.database:
         raise SystemExit("--database must not be the database configured in .env")
@@ -177,15 +198,16 @@ def main(argv=None) -> int:
         from thermoscope.config import Settings
 
         main_store = Path(Settings().object_store_local_path).resolve()
-        if Path(args.objects).resolve() == main_store:
-            parser.error("--objects must not be the object store configured in .env")
+        objects = Path(args.objects).resolve()
+        if objects == main_store or main_store in objects.parents or objects in main_store.parents:
+            parser.error("--objects must not be, contain or lie inside the object store in .env")
         os.environ["OBJECT_STORE_LOCAL_PATH"] = args.objects
     if args.command == "serve":
         os.environ["APP_DATA_MODE"] = "HISTORICAL_REPLAY"  # a demo package is always replay
     if args.command == "build" and args.source_objects:
         os.environ["OBJECT_STORE_LOCAL_PATH"] = args.source_objects
     if args.offline:
-        if args.command != "verify" and not _loopback_host(configured_database().host):
+        if args.command != "verify" and not loopback_database(configured_database()):
             raise SystemExit("--offline needs the database on a loopback server")
         forbid_network()
     if args.database:

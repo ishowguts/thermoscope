@@ -101,7 +101,12 @@ def test_package_refuses_key_bearing_files_and_digests_content():
         _check_clean(b"latitude,longitude\n1,2 fixture-secret\n", b"fixture-secret")
     _check_clean(b"latitude,longitude,bright_ti4\n", b"fixture-secret")
     files = [{"path": "b", "sha256": "2"}, {"path": "a", "sha256": "1"}]
-    assert content_digest(files) == content_digest(list(reversed(files)))
+    manifest = {"regions": ["jamnagar"], "sources": {"X": {"license": "L"}}, "files": files}
+    digest = content_digest(manifest | {"created_at": "then"})
+    assert digest == content_digest(manifest | {"files": files[::-1], "created_at": "now"})
+    for changed in ({"regions": ["punjab"]}, {"sources": {"X": {"license": "other"}}},
+                    {"files": [files[0] | {"region": "punjab"}, files[1]]}):  # fmt: skip
+        assert content_digest(manifest | changed) != digest
 
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "demo_package.py"
@@ -132,6 +137,8 @@ attempts = [
     lambda: socket.gethostbyname_ex("example.org"),
     lambda: socket.getaddrinfo("example.org", 443),
     lambda: udp.sendto(b"x", ("198.51.100.7", 53)),
+    lambda: socket.gethostbyaddr("198.51.100.7"),
+    lambda: socket.getnameinfo(("198.51.100.7", 80), 0),
 ]
 for attempt in attempts:
     try:
@@ -161,6 +168,16 @@ def test_demo_script_never_loads_into_the_configured_database_or_store(monkeypat
         module.use_database("thermoscope_dev", create=False)
     with pytest.raises(SystemExit, match="must look like"):
         module.use_database("postgres", create=False)
-    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@db.example.org:5432/thermoscope")
-    with pytest.raises(SystemExit, match="loopback"):
-        module.use_database("thermoscope_demo", create=False)
+    remotes = (
+        "postgresql+psycopg://u:p@db.example.org:5432/thermoscope",
+        "postgresql+psycopg://u:p@localhost:5432/thermoscope?hostaddr=192.0.2.1",
+    )
+    for remote in remotes:
+        monkeypatch.setenv("DATABASE_URL", remote)
+        with pytest.raises(SystemExit, match="loopback"):
+            module.use_database("thermoscope_demo", create=False)
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@127.0.0.1:1/thermoscope_dev")
+    for inside in (tmp_path / "objects" / "raw", tmp_path):
+        with pytest.raises(SystemExit) as refused:
+            module.main(["serve", "--database", "thermoscope_demo", "--objects", str(inside)])
+        assert refused.value.code == 2

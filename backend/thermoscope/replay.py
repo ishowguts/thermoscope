@@ -254,8 +254,8 @@ def build_package(
             "sources": SOURCES,
             "files": files,
             "bytes": total,
-            "content_sha256": content_digest(files),
         }
+        manifest["content_sha256"] = content_digest(manifest)
         (staging / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n")
         (staging / "README.txt").write_text(readme(manifest))
         staging.rename(target)
@@ -340,11 +340,16 @@ def _landcover_rows(
     return rows
 
 
-def content_digest(files: list[dict]) -> str:
-    """Identifies the package content (every entry with all its metadata) independently of when
-    it was built."""
-    canonical = json.dumps(sorted(files, key=lambda e: str(e.get("path"))), sort_keys=True,
-                           separators=(",", ":"), default=str)  # fmt: skip
+UNHASHED = {"content_sha256", "created_at"}
+
+
+def content_digest(manifest: dict) -> str:
+    """Identifies the whole package independently of when it was built: every manifest field
+    (regions, sources and licences, every file entry with all its metadata) except the build
+    time. README.txt is generated from the manifest and checked against it."""
+    body = {k: v for k, v in manifest.items() if k not in UNHASHED}
+    body["files"] = sorted(body.get("files") or [], key=lambda e: str(e.get("path")))
+    canonical = json.dumps(body, sort_keys=True, separators=(",", ":"), default=str)
     return sha256(canonical.encode())
 
 
@@ -442,8 +447,21 @@ def verify_package(directory: Path, expect_sha256: str | None = None) -> dict:
             problems.append({"path": relative, "problem": "SYMLINK_NOT_ALLOWED"})
         elif file.is_file() and relative not in listed:
             problems.append({"path": relative, "problem": "NOT_IN_MANIFEST"})
-    if content_digest(manifest["files"]) != manifest["content_sha256"]:
+    if content_digest(manifest) != manifest.get("content_sha256"):
         problems.append({"path": "manifest.json", "problem": "CONTENT_DIGEST_MISMATCH"})
+    readme_file = member(directory, "README.txt")
+    if readme_file is None or not readme_file.is_file():
+        problems.append({"path": "README.txt", "problem": "MISSING"})
+    elif readme_file.read_text(errors="replace") != readme(manifest):
+        problems.append({"path": "README.txt", "problem": "README_NOT_FROM_MANIFEST"})
+    if not isinstance(manifest.get("regions"), list) or not manifest["regions"]:
+        problems.append({"path": "manifest.json", "problem": "INVALID_ENTRY"})
+    else:
+        for region in manifest["regions"]:
+            try:
+                region_box(region)
+            except (IngestError, TypeError):
+                problems.append({"path": "manifest.json", "problem": "INVALID_ENTRY"})
     if expect_sha256 is not None and expect_sha256 != manifest["content_sha256"]:
         problems.append({"path": "manifest.json", "problem": "NOT_THE_EXPECTED_PACKAGE"})
     return {"ok": not problems, "problems": problems} | summary_of(manifest, directory)
@@ -501,7 +519,7 @@ def load_package(
             report["events"][region] = {
                 k: result.get(k) for k in ("status", "input_count", "event_count", "site_count")
             }
-            if result.get("status") != "SUCCEEDED":
+            if result.get("status") not in {"SUCCEEDED", "UNCHANGED"}:  # UNCHANGED on reload
                 unexpected.append({"events": region, "status": result.get("status")})
     return report | {
         "ok": not unexpected,
