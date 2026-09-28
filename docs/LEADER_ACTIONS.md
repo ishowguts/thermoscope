@@ -1,22 +1,28 @@
 # What needs Bittu's attention
 
-Updated 28 September 2026 after the team confirmed that there is no time or available domain expert for manual review before submission.
+Updated 29 September 2026 01:45 IST. Release `v0.8.0-demo` is integrated in `main` (CI green) and submission package v6 is on your Mac.
 
 ## Needed now
 
-1. **The final handoff: received.** Main `d9ca117` and its successful CI are verified. No need to resend it. The integrator completed independent local acceptance and data integration; the implementer can take the prepared P07 task in its own branch when assigned. The integrator retains main ownership.
-2. **Approve the refreshed submission content when ready.** The prepared v2 PDF/text in `output/submission/` need their P05 status updated now that it is integrated. The integrator will revise and verify that exact version before final approval. Check team details, the idea and what the team is comfortable presenting. This is team approval of the entry; it does not require a technical expert or hundreds of labels.
-3. **Final submission.** After the approved content is saved and checked as a draft, authorize final submission or complete it yourself. Keep the acknowledgement and final PDF. Nothing is submitted yet.
+1. **Mac check and tag (Terminal).** In the ThermoScope folder run `bash local/p08-verify/verify_release_mac.sh`. When it ends, run `bash local/p08-verify/finish_release_mac.sh`: it refuses unless every step passed, then updates your `main` and publishes the tag `v0.8.0-demo`. If anything fails, send `local/p08-verify/report.txt`.
+2. **Team review of v6.** Open `output/submission/READ_FIRST_v6.md`, then the v6 PDF and the texts in `output/submission/v6/`. Check team details, the idea and what the team is comfortable presenting. This does not require a technical expert or labels.
+3. **Final submission.** Recheck the live PS count, paste the v6 text, upload the v6 PDF, save a draft, inspect it, then submit. Keep the acknowledgement and final PDF. Nothing is submitted yet.
 
 ## Optional before submission
 
-- A team voice recording for the existing short demo script, or a captioned recording of the real app. The observed YouTube field is optional. No video is recorded/uploaded yet.
+- Upload `v6/ThermoScope_SIH26162_demo_offline.mp4` (2 min, captioned, no audio) from the team's account as Unlisted, check it plays signed out, then paste the link. A team voice-over is possible using the talk track. Not uploaded yet.
+- Run the offline demo on the Mac with Wi-Fi off (`docs/DEMO_RUNBOOK.md` §4) as a rehearsal.
+
+## Decisions that stay yours
+
+- A code licence and the public-file allowlist (`docs/inventory/public-release-review.csv`) before anything is made public. Nothing is public now.
+- Hosting, only with a provider, billing owner and budget cap. Not needed for the submission.
 
 ## Not needed from you for this checkpoint
 
 - Finding a faculty/domain expert or completing manual labels before submission: **deferred** at your request.
 - A new FIRMS key, Earthdata account, GPU, cloud account or paid service: the existing local setup and saved data cover the P05 engineering checks.
-- Manually installing libraries, running tests, merging branches or preparing evidence files: the integrator handles these.
+- Manually installing libraries, merging branches or preparing evidence files: handled separately (the two Mac scripts above are the exception because only your Terminal can run them).
 - More historical backfill: the 252 saved files were verified and integrated. Cases near region edges can still lack enough spatial coverage; keep those exclusions explicit.
 
 ## What the team can honestly say
@@ -27,4 +33,4 @@ No software output will stand in for a human reviewer or turn guesses into indep
 
 ## Next-phase choice
 
-P05 local acceptance is complete. Recommended next: a bounded P07 demo pass, then P08 release checks. Defer P06 experiments until there are independent labels for a meaningful comparison. A recording plus reliable local replay avoids waiting for hosting; a public hosted demo needs a provider, billing owner, budget cap and a reviewed deployment plan first.
+P05 local acceptance, the bounded P07 demo and the local P08 release checks are complete. The next scientific step is independent labels (deferred, ADR-024); defer P06 experiments until they exist. A recording plus reliable local replay avoids waiting for hosting; a public hosted demo needs a provider, billing owner, budget cap and a reviewed deployment plan first.

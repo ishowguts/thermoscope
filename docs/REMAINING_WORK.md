@@ -1,12 +1,13 @@
 # ThermoScope — complete remaining-work checklist
 
-Checkpoint: 28 September 2026 IST. This is a delivery checklist, not a completion percentage or a promise of SIH selection. Implementation evidence lives in `EVIDENCE.md`; the authoritative phase order is `BUILD_PLAN.md`.
+Checkpoint: 29 September 2026 01:45 IST (release `v0.8.0-demo` and submission package v6). This is a delivery checklist, not a completion percentage or a promise of SIH selection. Implementation evidence lives in `EVIDENCE.md`; the authoritative phase order is `BUILD_PLAN.md`.
 
 ## What already exists
 
 - P01–P04 are technically integrated on private GitHub main and verified on the Mac: genuine FIRMS ingestion, PostGIS, API/map, OSM/WorldCover context, events/sites, history and transparent rules with UNKNOWN outcomes. Main now has 51,354 genuine observations across 14 pilot regions after P05 acceptance. Rules are computed from data; they are uncalibrated heuristics, not learned probabilities or confirmed source truth.
 - The final P05 implementation independently passed 148 unit/API plus 19 PostGIS tests on the Mac, along with lint, formatting, TypeScript and production build. Real provider reads and the built browser flow were checked. Five evidence defects were corrected. Human domain review is deferred at the owner's request.
 - P05 is integrated in `main` (28 September, at the owner's request): 14-region NOAA-20 archive from 30 December 2025, frozen facility-aware case set (10,318 cases; 10,035 history-eligible), evidence policy, blind review page with personal reviewer accounts, and an XGBoost/baseline/calibration pipeline. Separate review passes and isolated-clone checks are followed by an independent acceptance, canonical Mac migration/data integration and verified real-data runs (see internal record P05-MAC-ACCEPTANCE). Zero human labels, so no reportable learned-model performance; learned predictions are not served in the app.
+- Release `v0.8.0-demo` (29 September, with the owner's approval): the bounded P07 demo (hashed two-region offline replay package, bounded CSV/GeoJSON evidence exports, map-free mode) and the local P08 checks (fresh clone, dependency/licence audit, secret safety, backup/restore, links) integrated in `main` at `78e73de`, CI green; 164 unit/API + 23 PostGIS tests. The tag is published from the Mac by the owner's script. See `RELEASE.md`.
 - FIRMS access is working and stored privately. The team leader reports a working Earthdata login. Registered identity is Git_Push_Pray / Bittu Mandal / 144613 / INDIAN INSTITUTE OF INFORMATION TECHNOLOGY, PUNE. On 27 September around 22:19 IST, signed-in team details, submission access and form limits were verified. No separate nomination badge appeared; draft and submitted-idea lists were empty. See `SUBMISSION_DETAILS.md`.
 
 ## A. Before the national idea submission — priority now
@@ -16,11 +17,11 @@ The [official PS table](https://www.sih.gov.in/sih2026PS), checked at approximat
 | Remaining action | Owner | Completion evidence |
 | --- | --- | --- |
 | Portal access/form inspection completed; recheck before final submission | Done using the leader's signed-in session | Correct SIH26162 form accessible; limits recorded in `SUBMISSION_DETAILS.md`; no draft/submission created and no separate nomination badge displayed |
-| Refresh the prepared six-slide presentation after P05 integration; team review follows | The integrator prepared; team reviews | Editable PPTX and six-page PDF in `../output/submission/`; correct team details; built/proposed claims separated |
+| Refresh the prepared six-slide presentation to the release; team review follows | Done (v6); team reviews | `ThermoScope_SIH26162_Git_Push_Pray_v6.pdf`/`.pptx` in `../output/submission/`; `SUBMISSION_PACKAGE.md` |
 | Genuine screenshots captured; refresh the optional comparison clip | Done; human interpretation deferred | v2 uses actual refinery map/history; solar UNKNOWN comparison is in the video shot list; no dry-run accuracy or independent source verdict |
-| Refresh prepared portal text and claim ledger against the final demonstrated release | The integrator prepared; team reviews | Title 72, summary 1,570 and description 6,007 characters; files listed in `SUBMISSION_PACKAGE.md` |
-| Export and inspect the refreshed final PDF | The integrator | v2 passed six-page visual/link checks at 562,150 bytes; a changed version needs fresh inspection |
-| Record and caption the optional roughly 2–3 minute demo video | The integrator prepares; team can narrate | Speaking script and shot list exist; no recorded/uploaded video yet. No selection guarantee |
+| Refresh prepared portal text and claim ledger against the final demonstrated release | Done (v6); team reviews | Title 72, summary 1,983 and description 7,451 characters in `../output/submission/v6/` |
+| Export and inspect the refreshed final PDF | Done | v6: six pages inspected, 741,200 bytes, six reference links resolve; independent reviewer: no blocker |
+| Record and caption the optional roughly 2–3 minute demo video | Recorded; team uploads if wanted | `v6/ThermoScope_SIH26162_demo_offline.mp4`, 2 min 4 s, captioned, no audio; not uploaded. No selection guarantee |
 | Make supporting material accessible to judges | Prepared; team chooses public scope | Logged-out link checks. Private GitHub is not a judge-accessible public demo; a reviewed video can avoid waiting for deployment |
 | Approve the exact PDF/text, submit through the team account and retain proof | Team leader/team | Submitted PDF, acknowledgement/receipt and verified portal state |
 
@@ -83,14 +84,14 @@ These are later experiments, not prerequisites for an honest idea submission. Ea
 
 - [ ] Serve only an appropriately accepted model with version/provenance and explicit fallback/abstention; distinguish source classification, unusual behaviour and review priority.
 - [ ] Add analyst authentication/roles, append-only review and an alert lifecycle. Operational decisions must not silently become gold training labels.
-- [ ] Add bounded GeoJSON/CSV exports, evidence links and attribution.
-- [ ] Provide licensed cached/offline replay, clear live/replay/stale status, and a network-free demo path.
+- [x] Add bounded GeoJSON/CSV exports, evidence links and attribution. (P07-SUB-001)
+- [x] Provide licensed cached/offline replay, clear live/replay/stale status, and a network-free demo path. (P07-SUB-001: two regions, historical replay, no offline basemap; Mac Wi-Fi-off run pending)
 - [ ] Complete accessible map/list navigation, keyboard/mobile checks, WebGL failure handling and measured performance. Existing desktop list-only checks are only partial evidence.
 - [ ] Complete dependable bounded ingestion/job scheduling, retries/resume, source freshness and degraded-provider behaviour for the deployment scope. Keep SP/NRT revisions and provenance explicit.
 
 ## G. P08 — deployment and release
 
-Run the local demo-release checks after P07-SUB-001. Hosting is optional for submission; a reviewed recording with local replay can be sufficient supporting material. Deployment-only checks apply when a concrete hosting target is authorized.
+The local demo-release checks are done (P08-REL-001, `RELEASE.md` §3); the items below remain for a deployment or public release. Hosting is optional for submission; a reviewed recording with local replay can be sufficient supporting material. Deployment-only checks apply when a concrete hosting target is authorized.
 
 - [ ] Choose provider/region/billing owner, explicit budget cap and shutdown/resource-lifetime controls before a paid resource starts.
 - [ ] Package reproducible deployment with pinned environments, TLS, appropriate authentication, private database, origin/write restrictions, request/storage limits and secret-safe logs.
@@ -109,4 +110,4 @@ Separate MODIS support, wider sensor/geographic coverage, multi-class/subtype mo
 
 **The developers can handle:** source collection, manifests, engineering review, Mac checks, migration/integration, private token generation, review-tool setup, evidence packets, deck/abstract/diagrams, visual QA, demo script, technical deployment preparation, tests and reproducible handoffs. It can execute approved cloud/publishing/submission actions once the exact target and necessary access are established. It cannot supply independent human labels or guarantee SIH selection.
 
-**Next allocation:** after the P05 acceptance checkpoint, the implementer can take P07-SUB-001 in its own branch while the integrator refreshes the submission package and later accepts the branch. P08 demo-release checks follow. Sections D/E are deferred, not secretly completed. Portal inspection is recorded; final submission remains pending.
+**Next allocation:** P07-SUB-001 and the local P08 checks are integrated and the submission package is refreshed (v6); the owner runs the two Mac scripts, the team reviews and submits. Sections D/E are deferred, not secretly completed. Portal inspection is recorded; final submission remains pending.

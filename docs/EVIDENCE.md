@@ -337,3 +337,19 @@ Stacked on `p07-demo` `1f951f1`; tested tip `05a2431`. Cloud workspace as in the
 | Independent review | Separate read-only pass on `5735ef5`: 0 high, 4 medium, 9 low, addressed in `c17ba3b`; second pass: fixes confirmed, 1 medium (credential screen) and 7 low, addressed in `ca20848`/`9ccc49c`/`05a2431` | Last fixes not re-reviewed |
 | GitHub Actions | `5735ef5` [36461408662](https://github.com/ishowguts/thermoscope/actions/runs/36461408662), `c17ba3b` [36463846196](https://github.com/ishowguts/thermoscope/actions/runs/36463846196), `2e82906` [36464799347](https://github.com/ishowguts/thermoscope/actions/runs/36464799347), tested tip `05a2431` [36466090643](https://github.com/ishowguts/thermoscope/actions/runs/36466090643): all success | Ubuntu |
 
+
+## 29 September 2026, 00:38–01:45 IST — integration, release `v0.8.0-demo`, demo video and submission package v6
+
+Owner approval: "merge and tag"; access to `sih 2026/output` on the Mac granted. No portal entry, draft, submission, video upload, public release or hosting.
+
+| Check | Observed result | Scope / limitation |
+|---|---|---|
+| Integration | `p08-release` (`fa4beb7`, containing `p07-demo` `1f951f1`) merged into `main` as `1e22d54`; merged tree `make check` **164 passed**, `make integration` **23 passed**; records commit `78e73de`; application code identical to `fa4beb7` (docs-only difference) | Cloud workspace |
+| GitHub Actions on `main` | `78e73de` run [36472978149](https://github.com/ishowguts/thermoscope/actions/runs/36472978149): success | Ubuntu |
+| Release tag | Annotated `v0.8.0-demo` created on `78e73de` in the cloud clone; pushing it was refused by the workspace's Git proxy (HTTP 403, twice), so it is **not yet on GitHub**. `local/p08-verify/finish_release_mac.sh` (SHA-256 `1ebd44ca…c307`) publishes it from the Mac after the Mac verification passes; tested in the cloud against a scratch remote (no report, failed report, uncommitted edit and repeat run all stop or no-op correctly) | Owner runs it; the tag then carries the owner's Git identity |
+| Mac verification script | `local/p08-verify/verify_release_mac.sh` with a verified bundle of `fa4beb7`; cloud dry run all PASS, 113/113 package files identical to the inventory | Not yet run on the Mac |
+| Demo video | `ThermoScope_SIH26162_demo_offline.mp4`: 2 min 4 s, 1366 × 768 H.264, no audio, 11,777,746 bytes, SHA-256 `ecbec201…2dd4`; production build served from the loaded demo package with internet access refused (0 external requests); captions are overlays on the running app | Cloud workspace, not the Mac; not uploaded |
+| Submission package v6 | From v5: 10 of 69 PPTX parts changed (slides 2, 4, 5, six notes pages, core properties); package validator passes against v5; PDF exported by LibreOffice, all six pages rendered and inspected; PDF 741,200 bytes (`cc2b630d…f415`), PPTX 8,740,961 bytes (`16d7a07e…7a82`); summary 1,983, description 7,451, title 72 characters | No native PowerPoint render; slide 1 heading shows a serif substitute for Garamond |
+| Independent review of v6 | Separate read-only pass: 0 blockers; 4 should-fix (single-case export is GeoJSON only; 2-region offline scope; "map extracts" ambiguity; Mac re-check tense) and nits, all fixed before delivery | Not re-reviewed after the fixes |
+| Deck reference links | The six slide 6 links resolve to the named pages (FIRMS, Zenodo WorldCover record, Nature Scientific Data, two MDPI articles, Earth Engine catalog), web fetcher, 29 September | `sih.gov.in` still unverified |
+| Files on the Mac | `output/submission/ThermoScope_SIH26162_Git_Push_Pray_v6.{pdf,pptx}`, `READ_FIRST_v6.md` and `v6/` (texts, ledger, talk track, video): SHA-256 on the Mac match the sources. v2–v5 and the unversioned v5 texts unchanged. The first copy of the video arrived altered (11,783,621 bytes) and was replaced from the verified copy in `local/p08-verify/` | — |

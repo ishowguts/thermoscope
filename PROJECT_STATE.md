@@ -1,6 +1,6 @@
 # Project state
 
-Checkpoint: 29 September 2026 IST. **Release `v0.8.0-demo`: P01–P05 engineering (accepted on the Mac) plus the bounded P07 demo and local P08 release checks, integrated in `main` (`1e22d54`) with the owner's approval. Human source/model validation is deferred at the owner's request (ADR-024).** Canonical workspace: `thermoscope`; private remote: https://github.com/ishowguts/thermoscope; branch `main`. Read the internal handoff log first.
+Checkpoint: 29 September 2026 IST. **Release `v0.8.0-demo`: P01–P05 engineering (accepted on the Mac) plus the bounded P07 demo and local P08 release checks, integrated in `main` (`1e22d54`; release commit `78e73de`, CI green) with the owner's approval. Submission package v6 and a captioned demo video are on the Mac for team review. Human source/model validation is deferred at the owner's request (ADR-024).** Canonical workspace: `thermoscope`; private remote: https://github.com/ishowguts/thermoscope; branch `main`. Read the internal handoff log first.
 
 ## Milestone status
 
@@ -13,7 +13,7 @@ Checkpoint: 29 September 2026 IST. **Release `v0.8.0-demo`: P01–P05 engineerin
 | P05 labels/model pipeline | Engineering accepted after integration; Mac main updated, database 0008, saved data and artifacts verified. Scientific evaluation/promotion deferred: zero human reviews |
 | P06 satellite experiment | Deferred until independent labels enable a meaningful comparison |
 | P07 analyst product | Bounded demo task P07-SUB-001 **done and integrated** (`v0.8.0-demo`): offline replay package, bounded evidence exports, map-free fallback, status strip. The full milestone (authenticated review workflow, alerts, promoted model) remains unbuilt |
-| P08 release/deployment | Local release checks (P08-REL-001) **done and integrated**; release `v0.8.0-demo` tagged in the private repository (`docs/RELEASE.md`). Mac rehearsal with Wi-Fi off, code licence, public allowlist and any hosting remain open |
+| P08 release/deployment | Local release checks (P08-REL-001) **done and integrated** as release `v0.8.0-demo` (`docs/RELEASE.md`); the tag is published from the Mac by the owner's script (the cloud workspace cannot push tags). Mac verification and Wi-Fi-off rehearsal, code licence, public allowlist and any hosting remain open |
 
 ## Verified local implementation
 
@@ -31,10 +31,10 @@ Detailed acceptance and local report paths: internal record P05-MAC-ACCEPTANCE, 
 
 ## Exact next work
 
-1. **Submission refresh:** v2 PPTX/PDF and portal text exist in `../output/submission/`, but the old separate-branch P05 wording is stale. The integrator updates the claims to the accepted release, exports/visually checks the new PDF, then the team approves that exact content. No video, saved draft, final submission or receipt exists.
-2. **Mac check of `v0.8.0-demo`:** in the Mac checkout run `bash local/p08-verify/verify_release_mac.sh` (isolated clone, tests, demo package from the main database, offline load, API checks; the main checkout and database are not changed), then `git pull --ff-only` and optionally the runbook's Wi-Fi-off demo.
+1. **Team review of submission package v6:** `../output/submission/ThermoScope_SIH26162_Git_Push_Pray_v6.pdf` (+ `.pptx`) and the texts in `../output/submission/v6/` (start with `READ_FIRST_v6.md`; the unversioned texts beside it are v5). The optional video `v6/ThermoScope_SIH26162_demo_offline.mp4` is not uploaded. No saved draft, final submission or receipt exists.
+2. **Mac check and tag of `v0.8.0-demo`:** in the Mac checkout run `bash local/p08-verify/verify_release_mac.sh` (isolated clone, tests, demo package from the main database, offline load, API checks; the main checkout and database are not changed), then `bash local/p08-verify/finish_release_mac.sh` (fast-forwards `main`, publishes the tag on `78e73de`), and optionally the runbook's Wi-Fi-off demo.
 3. **Hosting (optional):** only with a concrete provider, access scope and budget before provisioning; the local replay and the recorded video are the planning assumption. P06, public hosting and learned inference remain out of scope.
-4. **Leader attention:** approve the refreshed submission content and authorize or perform final submission; optional narration. No new key, account, GPU, manual technical setup or expert recruitment is needed now. Full list: `docs/LEADER_ACTIONS.md`; all remaining product/scientific work: `docs/REMAINING_WORK.md`.
+4. **Leader attention:** approve submission package v6, recheck the live PS count, save and inspect a draft, then submit; optionally upload the video (Unlisted, checked signed out). No new key, account, GPU, manual technical setup or expert recruitment is needed now. Full list: `docs/LEADER_ACTIONS.md`; all remaining product/scientific work: `docs/REMAINING_WORK.md`.
 
 The signed-in portal was checked on 27 September around 22:19 IST: correct team and PS form accessible, six-member record, title 100 characters, description 50,000, summary 10,000, PDF up to 10 MB, optional YouTube link. No separate nomination badge appeared; no eligibility block was shown. The public table showed 140/500 and 30 September at that time. These are dated snapshots, not reserved capacity; recheck before submission. No portal fields, files, draft or submission were changed in this checkpoint.
 

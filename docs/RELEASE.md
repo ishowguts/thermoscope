@@ -1,6 +1,6 @@
 # ThermoScope demo release `v0.8.0-demo`
 
-Prepared on 28 September 2026 IST under `P08-REL-001` (internal record P08-RELEASE-CHECKS). **Status: released as tag `v0.8.0-demo` in the private repository on 29 September 2026**, integrated with the owner's explicit approval because the integrator was unavailable. It is not a public release, a GitHub release page or a deployment.
+Prepared on 28 September 2026 IST under `P08-REL-001` (internal record P08-RELEASE-CHECKS). **Status: integrated in `main` on 29 September 2026 (release commit `78e73de`, CI green); the annotated tag `v0.8.0-demo` is published from the Mac by the owner** (`local/p08-verify/finish_release_mac.sh`, after `verify_release_mac.sh` passes) because the cloud workspace cannot push tags. Integrated with the owner's explicit approval. It is not a public release, a GitHub release page or a deployment.
 
 ## 1. What the release is
 
@@ -15,7 +15,7 @@ It is a **research demonstration of saved real observations**: NASA FIRMS VIIRS 
 
 ## 2. How it was frozen
 
-On 29 September the branches were merged into `main` in a cloud clone (`1e22d54`), re-ran `make check` and `make integration`, updated these records, pushed, waited for CI and tagged the pushed tip `v0.8.0-demo`; `the handoff log` records the commits and CI run. The Mac checkout is brought up to date separately (`local/p08-verify/verify_release_mac.sh`, then `git pull --ff-only`). The general procedure, for a later release:
+On 29 September the branches were merged into `main` in a cloud clone (`1e22d54`), re-ran `make check` (164) and `make integration` (23), updated these records (`78e73de`), pushed and waited for CI ([36472978149](https://github.com/ishowguts/thermoscope/actions/runs/36472978149), success). The tag push from there was refused by the workspace's Git proxy (HTTP 403), so the tag is created on the Mac: in the Mac checkout, `bash local/p08-verify/verify_release_mac.sh` (isolated clone; the checkout and its database are not changed), then `bash local/p08-verify/finish_release_mac.sh`, which refuses unless the report shows every step passed, fast-forwards `main`, creates the annotated `v0.8.0-demo` on `78e73de` and pushes only that tag. `the handoff log` records the commits and CI run. The general procedure, for a later release:
 
 ```bash
 git fetch origin
@@ -81,18 +81,20 @@ Evidence files are in the cloud workspace (`fresh2/` and `p08/`, outside Git); n
 | WRI Global Power Plant Database (P05 registry) | Public; data CC BY 4.0, code MIT; unmaintained since 2022 |
 | `github.com/ishowguts/thermoscope` | 404 signed out: private, **not** a judge-accessible link |
 | SIH portal pages, template and guidelines (`sih.gov.in`) | Refused (HTTP 403) to both automated fetchers from this cloud workspace — **not verified**; check in a signed-out browser |
-| The deck's five reference hyperlinks | Not checked here: the PDF is a separately owned submission file on the Mac |
+| The v6 deck's six reference links (slide 6) | Resolve to the named pages (29 September, web fetcher): FIRMS, the Zenodo WorldCover record, Ma et al. (Nature Scientific Data), Caseiro et al. and Soltan and González-Martínez (MDPI), the Earth Engine Satellite Embedding catalog |
 
-## 8. Claims delta for the deck, text and video (; submission files untouched)
+## 8. Claims delta for the deck, text and video
 
-**Now demonstrable** (after the integrator accepts `p07-demo`): an offline replay of saved real NASA FIRMS observations for two regions, loaded and served with the network refused; per-observation evidence (measurements, mapped OSM context, 2021 land cover where extracted, 180-day history, transparent rules with reasons and missing data); bounded CSV/GeoJSON evidence exports with units, provenance and licences; a map-free mode; reproducible setup from a clean clone; no known dependency vulnerabilities in the locked versions; a rehearsed database backup and restore.
+Applied on 29 September in submission package v6 and the demo video (`docs/SUBMISSION_PACKAGE.md`). Kept here as the reference for any later wording.
+
+**Now demonstrable:** an offline replay of saved real NASA FIRMS observations for two regions, loaded and served with the network refused; per-observation evidence (measurements, mapped OSM context, 2021 land cover where extracted, 180-day history, transparent rules with reasons and missing data); bounded CSV/GeoJSON evidence exports with units, provenance and licences; a map-free mode; reproducible setup from a clean clone; no known dependency vulnerabilities in the locked versions; a rehearsed database backup and restore.
 
 **Suggested wording:** "A working research prototype replays genuine NASA FIRMS satellite detections with mapped industrial context, land cover where available and detection history, explains each rule-based assessment and its uncertainty, and exports the evidence with its sources, hashes and licences — offline if needed. The labelling and model-training pipeline is built and tested, but no model has been trained on human-reviewed labels; none is served or evaluated."
 
 **Do not claim:** live or real-time monitoring, alerts, deployed or public service, AI/ML detection or accuracy, validated or confirmed industrial incidents, calibrated probabilities, offline basemaps, performance targets, all 14 regions offline (the package holds two; the full local database holds 51,354 observations across 14 regions), or that a persistent heat source is safe.
 
-**Video (optional, not recorded here):** follow runbook §5 — refinery candidate (High review priority, "review order, not accident likelihood"), persistent container-terminal heat (Low, "not certified safe"), the Unknown solar case, a Punjab cropland contrast and an export — with the status strip visible and the basemap off or clearly online.
+**Video (recorded 29 September, not uploaded):** runbook §5 order — refinery candidate (High review priority, "review order, not accident likelihood"), persistent container-terminal heat (Low, "never certified safe"), the Unknown solar case, a Punjab cropland contrast and exports — with the status strip visible and the basemap off; recorded with internet access refused.
 
 ## 9. Still open for P08 (not done here)
 
-Hosting provider, budget cap, TLS, authentication, private database, monitoring, retention and a deployment smoke test (only if hosting is chosen); a Mac run of the offline demo with Wi-Fi off; the deck/text/video refresh and signed-out check of the deck's links; the code licence and public allowlist decisions; human validation and any model claims (ADR-024).
+Hosting provider, budget cap, TLS, authentication, private database, monitoring, retention and a deployment smoke test (only if hosting is chosen); the Mac verification and tag (owner's scripts) and a Mac run of the offline demo with Wi-Fi off; the team's review of submission package v6 and the signed-out check of `sih.gov.in`; the code licence and public allowlist decisions; human validation and any model claims (ADR-024).
