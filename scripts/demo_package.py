@@ -259,5 +259,20 @@ def _need(parser, value):
     return value
 
 
+def cli() -> int:
+    """Report an unreachable database as one JSON line instead of a driver traceback."""
+    try:
+        return main()
+    except Exception as error:  # noqa: BLE001 - classified below, never echoed
+        from psycopg import OperationalError as DriverError
+        from sqlalchemy.exc import OperationalError
+
+        if not isinstance(error, (OperationalError, DriverError)):
+            raise
+        hint = "Check that PostGIS is running and DATABASE_URL in .env."
+        print(json.dumps({"status": "FAILED", "error": "DATABASE_UNAVAILABLE", "detail": hint}))
+        return 1
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(cli())
