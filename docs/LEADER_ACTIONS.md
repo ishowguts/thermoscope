@@ -4,7 +4,7 @@ Updated 29 September 2026 01:45 IST. Release `v0.8.0-demo` is integrated in `mai
 
 ## Needed now
 
-1. **Mac check and tag (Terminal).** In the ThermoScope folder run `bash local/p08-verify/verify_release_mac.sh`. When it ends, run `bash local/p08-verify/finish_release_mac.sh`: it refuses unless every step passed, then updates your `main` and publishes the tag `v0.8.0-demo`. If anything fails, send `local/p08-verify/report.txt`.
+1. **Mac check and tag: done** (29 Sep 01:53 IST). Both scripts passed and the tag `v0.8.0-demo` is published. Optional deck upgrade: `output/submission/v7-brief/` has a master prompt, image prompts and 14 real screenshots for building a richer v7 deck; review the result against the fact sheet before using it.
 2. **Team review of v6.** Open `output/submission/READ_FIRST_v6.md`, then the v6 PDF and the texts in `output/submission/v6/`. Check team details, the idea and what the team is comfortable presenting. This does not require a technical expert or labels.
 3. **Final submission.** Recheck the live PS count, paste the v6 text, upload the v6 PDF, save a draft, inspect it, then submit. Keep the acknowledgement and final PDF. Nothing is submitted yet.
 

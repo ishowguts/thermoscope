@@ -13,7 +13,7 @@ Checkpoint: 29 September 2026 IST. **Release `v0.8.0-demo`: P01–P05 engineerin
 | P05 labels/model pipeline | Engineering accepted after integration; Mac main updated, database 0008, saved data and artifacts verified. Scientific evaluation/promotion deferred: zero human reviews |
 | P06 satellite experiment | Deferred until independent labels enable a meaningful comparison |
 | P07 analyst product | Bounded demo task P07-SUB-001 **done and integrated** (`v0.8.0-demo`): offline replay package, bounded evidence exports, map-free fallback, status strip. The full milestone (authenticated review workflow, alerts, promoted model) remains unbuilt |
-| P08 release/deployment | Local release checks (P08-REL-001) **done and integrated** as release `v0.8.0-demo` (`docs/RELEASE.md`); the tag is published from the Mac by the owner's script (the cloud workspace cannot push tags). Mac verification and Wi-Fi-off rehearsal, code licence, public allowlist and any hosting remain open |
+| P08 release/deployment | Local release checks (P08-REL-001) **done and integrated** as release `v0.8.0-demo` (`docs/RELEASE.md`); tag published from the Mac after the Mac verification passed (the cloud workspace cannot push tags). Wi-Fi-off rehearsal, code licence, public allowlist and any hosting remain open |
 
 ## Verified local implementation
 
@@ -32,7 +32,7 @@ Detailed acceptance and local report paths: internal record P05-MAC-ACCEPTANCE, 
 ## Exact next work
 
 1. **Team review of submission package v6:** `../output/submission/ThermoScope_SIH26162_Git_Push_Pray_v6.pdf` (+ `.pptx`) and the texts in `../output/submission/v6/` (start with `READ_FIRST_v6.md`; the unversioned texts beside it are v5). The optional video `v6/ThermoScope_SIH26162_demo_offline.mp4` is not uploaded. No saved draft, final submission or receipt exists.
-2. **Mac check and tag of `v0.8.0-demo`:** in the Mac checkout run `bash local/p08-verify/verify_release_mac.sh` (isolated clone, tests, demo package from the main database, offline load, API checks; the main checkout and database are not changed), then `bash local/p08-verify/finish_release_mac.sh` (fast-forwards `main`, publishes the tag on `78e73de`), and optionally the runbook's Wi-Fi-off demo.
+2. **Mac check and tag of `v0.8.0-demo`: done** (29 Sep 01:53 IST): verification all PASS (164 + 23, offline load), Mac `main` fast-forwarded, tag published. Optional: the runbook's Wi-Fi-off demo rehearsal. A redesign brief for a richer v7 deck (master prompt, image prompts, 14 real screenshots) is in `../output/submission/v7-brief/`.
 3. **Hosting (optional):** only with a concrete provider, access scope and budget before provisioning; the local replay and the recorded video are the planning assumption. P06, public hosting and learned inference remain out of scope.
 4. **Leader attention:** approve submission package v6, recheck the live PS count, save and inspect a draft, then submit; optionally upload the video (Unlisted, checked signed out). No new key, account, GPU, manual technical setup or expert recruitment is needed now. Full list: `docs/LEADER_ACTIONS.md`; all remaining product/scientific work: `docs/REMAINING_WORK.md`.
 

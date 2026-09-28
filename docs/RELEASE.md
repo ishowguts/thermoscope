@@ -1,6 +1,6 @@
 # ThermoScope demo release `v0.8.0-demo`
 
-Prepared on 28 September 2026 IST under `P08-REL-001` (internal record P08-RELEASE-CHECKS). **Status: integrated in `main` on 29 September 2026 (release commit `78e73de`, CI green); the annotated tag `v0.8.0-demo` is published from the Mac by the owner** (`local/p08-verify/finish_release_mac.sh`, after `verify_release_mac.sh` passes) because the cloud workspace cannot push tags. Integrated with the owner's explicit approval. It is not a public release, a GitHub release page or a deployment.
+Prepared on 28 September 2026 IST under `P08-REL-001` (internal record P08-RELEASE-CHECKS). **Status: released on 29 September 2026 as the annotated tag `v0.8.0-demo` on `78e73de` (CI green), published from the owner's Mac** (`local/p08-verify/finish_release_mac.sh`, after `verify_release_mac.sh` passed on macOS: 164 + 23 tests, offline demo load) because the cloud workspace cannot push tags. Integrated with the owner's explicit approval. It is not a public release, a GitHub release page or a deployment.
 
 ## 1. What the release is
 
