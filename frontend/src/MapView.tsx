@@ -71,6 +71,7 @@ export function MapView({
   unavailableTiles.current = onBasemapUnavailable;
   const initialBasemap = useRef(basemap);
   const basemapTilesLoaded = useRef(false);
+  const basemapFailures = useRef(0);
   const [ready, setReady] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const [tileError, setTileError] = useState(false);
@@ -222,12 +223,14 @@ export function MapView({
           basemapTilesLoaded.current = true;
       });
       instance.on("error", (event) => {
-        // Basemap tiles failing before any arrived (offline, blocked) switch the basemap
-        // off; an occasional failure after others loaded only shows the notice. Data stays.
-        if (
-          (event as { sourceId?: string }).sourceId === "osm" &&
-          !basemapTilesLoaded.current
-        )
+        // Several basemap tiles failing before any arrived (offline, blocked) switch the
+        // basemap off; a stray failure only shows the notice. Data layers stay either way.
+        if ((event as { sourceId?: string }).sourceId !== "osm") {
+          setTileError(true);
+          return;
+        }
+        basemapFailures.current += 1;
+        if (!basemapTilesLoaded.current && basemapFailures.current >= 3)
           unavailableTiles.current();
         else setTileError(true);
       });
@@ -275,6 +278,7 @@ export function MapView({
 
   useEffect(() => {
     if (!ready || !map.current) return;
+    if (basemap) basemapFailures.current = 0; // a retry counts its own failures
     map.current.setLayoutProperty(
       "basemap",
       "visibility",

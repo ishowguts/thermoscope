@@ -747,13 +747,18 @@ function App({ status }: { status: ServiceStatus | null }) {
       end_date: query.end_date,
       data_mode: mode,
       rule_outputs: String(withRules && !rulesTooMany),
+      basis,
     });
+    const rules =
+      withRules && !rulesTooMany
+        ? `, rule outputs (${basis.toLowerCase()} basis)`
+        : "";
     setExporting(true);
     setExportFailed(false);
     downloadExport(`/api/v1/exports/observations.${format}?${parameters}`)
       .then((result) =>
         setExportNote(
-          `Saved ${result.filename}: ${result.count} observation(s), pixel centres in WGS84 with sources and units.`,
+          `Saved ${result.filename}: ${result.count} observation(s)${rules}, pixel centres in WGS84 with sources and units.`,
         ),
       )
       .catch((reason) => {

@@ -7,6 +7,7 @@ import csv
 import hashlib
 import importlib.util
 import json
+import os
 import shutil
 import socket
 from datetime import UTC, datetime
@@ -19,9 +20,10 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from psycopg import sql
+from pydantic import SecretStr
 from sqlalchemy import text
 from test_context import fixture_osm
-from test_firms import ROW, fixture_csv, window
+from test_firms import HEADER, ROW, fixture_csv, window
 from test_landcover import synthetic_raster
 from thermoscope import exports
 from thermoscope.assessment import observation_assessment
@@ -33,13 +35,28 @@ from thermoscope.firms import IngestError
 from thermoscope.ingestion import ingest
 from thermoscope.landcover import extract_landcover
 from thermoscope.main import create_app
-from thermoscope.replay import build_package, load_package, restore_landcover, verify_package
+from thermoscope.regions import Bounds, Window
+from thermoscope.replay import (
+    build_package,
+    content_digest,
+    load_package,
+    restore_landcover,
+    verify_package,
+)
 
 pytestmark = pytest.mark.integration
 
 A = ROW  # inside the fixture refinery, next to a flare, on the synthetic land-cover raster
 C = ROW.replace("22.3,69.8", "22.3,69.83")  # near a mapped industrial area, off the raster
 D = ROW.replace("22.3,69.8", "22.8,69.6").replace(",0,D", ",,D")  # nothing mapped, FRP missing
+# A standard-product (SP) detection on the land-cover raster: history input, not listed in the UI
+SP = (
+    ROW.rstrip("\n")
+    .replace("22.3,69.8", "22.305,69.805")
+    .replace("2.0NRT", "2")
+    .replace("2026-01-02", "2025-12-30")
+    + ",2\n"
+)  # before the NRT window, like the archive
 MODE = DataMode.HISTORICAL_REPLAY
 RETRIEVED = datetime(2026, 1, 5, 6, tzinfo=UTC)
 ENDPOINT = "https://overpass.fixture.invalid/api/interpreter"
@@ -56,8 +73,13 @@ def migrate(monkeypatch, url):
 def source(test_database, tmp_path):
     """A workspace-like database holding one replayed FIRMS file, OSM and land cover."""
     command.upgrade(Config("alembic.ini"), "head")
-    settings = Settings(object_store_local_path=tmp_path / "source-objects", firms_map_key=None)
+    settings = Settings(object_store_local_path=tmp_path / "source-objects", firms_map_key=None,
+                        review_only=False)  # fmt: skip
     assert ingest(settings, window(), MODE, payload=fixture_csv(A, C, D))["status"] == "SUCCEEDED"
+    sp_window = Window(product="VIIRS_NOAA20_SP", bounds=Bounds.parse("69.5,22,70.5,23"),
+                       start_date="2025-12-29", days=3)  # fmt: skip
+    sp_payload = (HEADER.rstrip("\n") + ",type\n" + SP).encode()
+    assert ingest(settings, sp_window, MODE, payload=sp_payload)["status"] == "SUCCEEDED"
     osm = fixture_osm()
     osm_dir = tmp_path / "osm"
     osm_dir.mkdir()
@@ -104,8 +126,13 @@ def offline(monkeypatch):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     for owner, attribute in ((socket.socket, "connect"), (socket.socket, "connect_ex"),
-                             (socket, "getaddrinfo")):  # fmt: skip
+                             (socket.socket, "sendto"), (socket.socket, "sendmsg"),
+                             (socket, "getaddrinfo"), (socket, "gethostbyname"),
+                             (socket, "gethostbyname_ex")):  # fmt: skip
         monkeypatch.setattr(owner, attribute, getattr(owner, attribute))  # restored afterwards
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy",
+                 "all_proxy", "GDAL_HTTP_PROXY", "NO_PROXY", "no_proxy"):  # fmt: skip
+        monkeypatch.setenv(name, os.environ.get(name, ""))  # restored (or removed) afterwards
     module.forbid_network()
     with pytest.raises(OSError, match="offline mode"):
         socket.create_connection(("198.51.100.7", 443), timeout=1)
@@ -133,28 +160,42 @@ def test_demo_package_round_trip_is_verified_offline_and_repeatable(
     settings, osm_dir = source
     out = tmp_path / "packages"
     built = build_package(settings, out, "fixture-demo", ["jamnagar"], [], osm_dir)
-    assert built["files"]["FIRMS_CSV"] == 1 and built["files"]["OSM_OVERPASS_JSON"] == 1
+    assert built["files"]["OSM_OVERPASS_JSON"] == 1
+    assert built["files"]["FIRMS_CSV"] == 2  # NRT and SP windows
     assert built["files"]["WORLDCOVER_SUMMARIES"] == 1 and built["files"]["WORLDCOVER_CHIP"] >= 1
     package = out / "fixture-demo"
     manifest = json.loads((package / "manifest.json").read_text())
+    summarized = {r["observation_id"] for r in
+                  json.loads((package / "worldcover" / "summaries.json").read_text())}  # fmt: skip
+    assert len(summarized) >= 2  # NRT and SP observations on the raster both carry land cover
+    assert {e["source_status"] for e in manifest["files"] if e["kind"] == "FIRMS_CSV"} == {
+        "SUCCEEDED"}  # fmt: skip
     assert manifest["data_mode"] == "HISTORICAL_REPLAY" and "Not the frozen" in manifest["purpose"]
     assert manifest["sources"]["OPENSTREETMAP"]["license"] == "ODbL-1.0"
     assert manifest["sources"]["ESA_WORLDCOVER"]["license"] == "CC-BY-4.0"
     assert all(len(entry["sha256"]) == 64 for entry in manifest["files"])
-    assert "Load (offline)" in (package / "README.txt").read_text()
+    readme = (package / "README.txt").read_text()
+    assert "Load (offline" in readme and f"--expect-sha256 {manifest['content_sha256']}" in readme
     assert verify_package(package)["ok"]
     with pytest.raises(FileExistsError):
         build_package(settings, out, "fixture-demo", ["jamnagar"], [], osm_dir)
     assert not (out / ".fixture-demo.partial").exists()
 
     # Tampering is refused before anything is stored.
+    outside = tmp_path / "outside.csv"
+    outside.write_text("latitude\n")
     for problem, change in (
         ("HASH_MISMATCH", lambda p: (p / next(e["path"] for e in manifest["files"]
                                               if e["kind"] == "FIRMS_CSV")).write_text("x")),
         ("NOT_IN_MANIFEST", lambda p: (p / "firms" / "extra.csv").write_text("x")),
         ("MISSING", lambda p: (p / "worldcover" / "summaries.json").unlink()),
+        ("SYMLINK_NOT_ALLOWED", lambda p: (p / "firms" / "link.csv").symlink_to(outside)),
+        ("UNSAFE_PATH", lambda p: rewrite(p, lambda files: files[0].update(path="../outside.csv"))),
+        ("UNSAFE_PATH", lambda p: rewrite(p, lambda files: files[0].update(path=str(outside)))),
+        ("INVALID_ENTRY", lambda p: rewrite(p, lambda files: first_firms(files).update(
+            region="nowhere"))),
     ):  # fmt: skip
-        copy = tmp_path / f"tampered-{problem}"
+        copy = tmp_path / f"tampered-{problem}-{uuid4().hex[:6]}"
         shutil.copytree(package, copy)
         change(copy)
         check = verify_package(copy)
@@ -163,9 +204,21 @@ def test_demo_package_round_trip_is_verified_offline_and_repeatable(
             load_package(target, copy)
     assert observation_ids(target) == []
 
+    # Metadata edits with a recomputed digest pass `verify` alone but not against the hash
+    # received separately.
+    relabelled = tmp_path / "relabelled"
+    shutil.copytree(package, relabelled)
+    rewrite(relabelled, lambda files: first_firms(files).update(region="punjab"))
+    assert verify_package(relabelled)["ok"]
+    check = verify_package(relabelled, manifest["content_sha256"])
+    assert [p["problem"] for p in check["problems"]] == ["NOT_THE_EXPECTED_PACKAGE"]
+    with pytest.raises(IngestError, match="PACKAGE_VERIFICATION_FAILED"):
+        load_package(target, relabelled, expect_sha256=manifest["content_sha256"])
+
     offline(monkeypatch)
-    loaded = load_package(target, package)
-    assert loaded["firms"] == {"SUCCEEDED": 1} and loaded["inserted_rows"] == 3
+    loaded = load_package(target, package, expect_sha256=manifest["content_sha256"])
+    assert loaded["ok"] and loaded["unexpected"] == []
+    assert loaded["firms"] == {"SUCCEEDED": 2} and loaded["inserted_rows"] == 4
     assert loaded["osm"] == {"jamnagar": "PARTIAL"}  # the fixture's two invalid shapes
     summaries = loaded["landcover"]["summaries"]
     assert summaries >= 1 and loaded["landcover"]["restored"] == summaries
@@ -178,34 +231,42 @@ def test_demo_package_round_trip_is_verified_offline_and_repeatable(
     assert again["inserted_rows"] == 0 and again["landcover"]["already_present"] == summaries
     assert observation_ids(target) == observation_ids(settings)
 
-    # A summary that the packaged chip does not reproduce is refused even with fixed hashes.
-    forged = tmp_path / "forged"
-    shutil.copytree(package, forged)
-    rows = json.loads((forged / "worldcover" / "summaries.json").read_text())
-    rows[0]["support"]["valid_fraction"] = 0.123
-    payload = (json.dumps(rows, indent=1, sort_keys=True) + "\n").encode()
-    (forged / "worldcover" / "summaries.json").write_bytes(payload)
-    forged_manifest = json.loads((forged / "manifest.json").read_text())
-    for entry in forged_manifest["files"]:
-        if entry["path"] == "worldcover/summaries.json":
+    # A summary the packaged chip does not reproduce is refused even with rewritten hashes.
+    for field, forge in (("support", lambda row: row["support"].update(valid_fraction=0.123)),
+                         ("status", lambda row: row.update(status="INSUFFICIENT")),
+                         ("tile", lambda row: row.update(tile_id="N00E000"))):  # fmt: skip
+        forged = tmp_path / f"forged-{field}"
+        shutil.copytree(package, forged)
+        rows = json.loads((forged / "worldcover" / "summaries.json").read_text())
+        forge(next(row for row in rows if row["status"] == "OK"))
+        payload = (json.dumps(rows, indent=1, sort_keys=True) + "\n").encode()
+        (forged / "worldcover" / "summaries.json").write_bytes(payload)
+
+        def fix(files, payload=payload):
+            entry = next(e for e in files if e["path"] == "worldcover/summaries.json")
             entry["sha256"], entry["bytes"] = hashlib.sha256(payload).hexdigest(), len(payload)
-    forged_manifest["content_sha256"] = exports_digest(forged_manifest["files"])
-    (forged / "manifest.json").write_text(json.dumps(forged_manifest))
-    assert verify_package(forged)["ok"]
-    with pytest.raises(IngestError, match="LANDCOVER_SUMMARY_NOT_REPRODUCED"):
-        restore_landcover(target, forged)
+
+        rewrite(forged, fix)
+        assert verify_package(forged)["ok"]
+        with pytest.raises(IngestError, match="LANDCOVER_SUMMARY_NOT_REPRODUCED"):
+            restore_landcover(target, forged)
 
 
-def exports_digest(files):
-    from thermoscope.replay import content_digest
+def first_firms(files):
+    return next(entry for entry in files if entry["kind"] == "FIRMS_CSV")
 
-    return content_digest(files)
+
+def rewrite(package, change):
+    """Edit manifest entries and recompute its digest, as someone editing a copy could."""
+    manifest = json.loads((package / "manifest.json").read_text())
+    change(manifest["files"])
+    manifest["content_sha256"] = content_digest(manifest["files"])
+    (package / "manifest.json").write_text(json.dumps(manifest))
 
 
 def test_package_build_refuses_a_credential_in_a_saved_file(source, tmp_path):
     settings, osm_dir = source
-    keyed = Settings(object_store_local_path=settings.object_store_local_path,
-                     firms_map_key="22.3")  # fmt: skip  # a string the stored CSV contains
+    keyed = settings.model_copy(update={"firms_map_key": SecretStr("22.3")})  # in the CSV
     with pytest.raises(IngestError, match="POSSIBLE_CREDENTIAL_IN_FILE"):
         build_package(keyed, tmp_path / "packages", "keyed-demo", ["jamnagar"], [], osm_dir)
     packages = tmp_path / "packages"
@@ -238,9 +299,23 @@ def test_window_exports_keep_units_provenance_and_bounds(source, monkeypatch):
     assert {r["rule_source"] for r in ruled_rows} <= {
         "INDUSTRIAL", "AGRICULTURAL_BURN", "VEGETATION_FIRE", "UNKNOWN"}  # fmt: skip
     assert all(r["rules_version"] and len(r["feature_snapshot_sha256"]) == 64 for r in ruled_rows)
+    assert {r["rule_basis"] for r in ruled_rows} == {"RETROSPECTIVE"}
+    assert all("OpenStreetMap" in r["context_attribution"] and "WorldCover" in
+               r["context_attribution"] for r in ruled_rows)  # fmt: skip
+    refinery = next(r for r in ruled_rows if (r["latitude"], r["longitude"]) == ("22.3", "69.8"))
+    assert refinery["context_osm_as_of_utc"].startswith("2026-01-05")  # the fixture's OSM date
+    assert refinery["context_land_cover_map_year"] == "2021"
+    as_operated = WINDOW | {"rule_outputs": True, "basis": "OPERATIONAL"}
+    operational = client.get("/api/v1/exports/observations.csv", params=as_operated)
+    assert {r["rule_basis"] for r in csv.DictReader(operational.text.splitlines())} == {
+        "OPERATIONAL"}  # fmt: skip
+    ruled_geo = client.get("/api/v1/exports/observations.geojson",
+                           params=WINDOW | {"rule_outputs": True}).json()  # fmt: skip
+    licences = {s["source"]: s["license"] for s in ruled_geo["meta"]["context_sources"]}
+    assert licences == {"OpenStreetMap": "ODbL-1.0", "ESA WorldCover 2021 v200": "CC-BY-4.0"}
 
     geo = client.get("/api/v1/exports/observations.geojson", params=WINDOW).json()
-    assert len(geo["features"]) == 3
+    assert len(geo["features"]) == 3 and "context_sources" not in geo["meta"]
     assert {tuple(f["geometry"]["coordinates"]) for f in geo["features"]} == {
         (69.8, 22.3), (69.83, 22.3), (69.6, 22.8)}  # fmt: skip
     assert geo["meta"]["observations"] == 3 and "WGS84" in geo["meta"]["coordinates"]
@@ -254,6 +329,8 @@ def test_window_exports_keep_units_provenance_and_bounds(source, monkeypatch):
                           params=WINDOW | {"data_mode": "SYNTHETIC_FIXTURE"})  # fmt: skip
     assert len(fixtures.text.splitlines()) == 1  # modes never mix
 
+    monkeypatch.setattr(exports, "MAX_OBSERVATIONS", 3)  # exactly at the limit: allowed
+    assert client.get("/api/v1/exports/observations.geojson", params=WINDOW).status_code == 200
     monkeypatch.setattr(exports, "MAX_OBSERVATIONS", 2)
     refused = client.get("/api/v1/exports/observations.geojson", params=WINDOW)
     assert refused.status_code == 413

@@ -2,6 +2,7 @@
 request validation, blind-review withholding and the offline network guard (no database)."""
 
 import csv
+import importlib.util
 import io
 import subprocess
 import sys
@@ -45,7 +46,8 @@ RECORD = {
 
 
 def test_csv_cells_neutralise_formulas_but_keep_numbers():
-    for hostile in ("=1+1", "+cmd", "-2+3", "@SUM(A1)", "\tx", "\rx", "\nx"):
+    for hostile in ("=1+1", "+cmd", "-2+3", "@SUM(A1)", "\tx", "\rx", "\nx", "  =1+1",
+                    "\u3000=1", "\uff1dSUM(A1)", "\uff0b1"):  # fmt: skip
         assert csv_cell(hostile) == "'" + hostile
     assert csv_cell(-3.5) == -3.5 and csv_cell(0) == 0 and csv_cell(None) == ""
     assert csv_cell(True) == "true" and csv_cell("N20") == "N20"
@@ -59,6 +61,7 @@ def test_csv_has_units_free_columns_status_and_empty_missing_values():
     assert (rows[0]["learned_model"], rows[0]["human_validation"]) == ("NOT_SERVED", "PENDING")
     with_rules = to_csv([RECORD | dict.fromkeys(RULE_COLUMNS)], include_rules=True)
     assert all(column in with_rules.splitlines()[0] for column in RULE_COLUMNS)
+    assert {"context_osm_as_of_utc", "context_attribution"} <= set(RULE_COLUMNS)
 
 
 def test_geojson_uses_wgs84_longitude_latitude_and_describes_itself():
@@ -101,23 +104,63 @@ def test_package_refuses_key_bearing_files_and_digests_content():
     assert content_digest(files) == content_digest(list(reversed(files)))
 
 
-def test_offline_guard_refuses_every_non_loopback_connection():
-    script = Path(__file__).resolve().parents[2] / "scripts" / "demo_package.py"
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "demo_package.py"
+
+
+def demo_script():
+    spec = importlib.util.spec_from_file_location("demo_package", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_offline_guard_refuses_python_level_network_access():
     probe = f"""
-import importlib.util, socket
-spec = importlib.util.spec_from_file_location("demo_package", {str(script)!r})
+import importlib.util, os, socket
+spec = importlib.util.spec_from_file_location("demo_package", {str(SCRIPT)!r})
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
 module.forbid_network()
 server = socket.socket(); server.bind(("127.0.0.1", 0)); server.listen(1)
 local = socket.create_connection(server.getsockname(), timeout=2); local.close()
-for target in (("198.51.100.7", 80), ("example.org", 443)):
+udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+udp.sendto(b"x", ("127.0.0.1", server.getsockname()[1]))
+attempts = [
+    lambda: socket.create_connection(("198.51.100.7", 80), timeout=2),
+    lambda: socket.create_connection(("example.org", 443), timeout=2),
+    lambda: socket.create_connection(("2001:db8::1", 443), timeout=2),
+    lambda: socket.gethostbyname("example.org"),
+    lambda: socket.gethostbyname_ex("example.org"),
+    lambda: socket.getaddrinfo("example.org", 443),
+    lambda: udp.sendto(b"x", ("198.51.100.7", 53)),
+]
+for attempt in attempts:
     try:
-        socket.create_connection(target, timeout=2)
-        raise SystemExit("reached " + str(target))
+        attempt()
+        raise SystemExit("network reached")
     except OSError as error:
         assert "offline mode" in str(error), error
+assert os.environ["HTTPS_PROXY"] == os.environ["GDAL_HTTP_PROXY"] == "http://127.0.0.1:9"
 print("ok")
 """
     done = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True,
                           timeout=30)  # fmt: skip
     assert done.returncode == 0 and done.stdout.strip() == "ok", done.stderr[-500:]
+
+
+def test_demo_script_never_loads_into_the_configured_database_or_store(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@127.0.0.1:1/thermoscope_dev")
+    monkeypatch.setenv("OBJECT_STORE_LOCAL_PATH", str(tmp_path / "objects"))
+    module = demo_script()
+    for argv in (["load", "--package", "x"], ["serve"],
+                 ["load", "--package", "x", "--database", "thermoscope_demo", "--objects",
+                  str(tmp_path / "objects")]):  # fmt: skip
+        with pytest.raises(SystemExit) as refused:
+            module.main(argv)
+        assert refused.value.code == 2  # argument error before any connection
+    with pytest.raises(SystemExit, match="must not be the database configured"):
+        module.use_database("thermoscope_dev", create=False)
+    with pytest.raises(SystemExit, match="must look like"):
+        module.use_database("postgres", create=False)
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@db.example.org:5432/thermoscope")
+    with pytest.raises(SystemExit, match="loopback"):
+        module.use_database("thermoscope_demo", create=False)

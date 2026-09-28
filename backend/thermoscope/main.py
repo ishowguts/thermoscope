@@ -88,7 +88,12 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
         allow_origins=config.allowed_origins,
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type", "Authorization"],
-        expose_headers=["X-Request-ID"],
+        expose_headers=[
+            "X-Request-ID",
+            "Content-Disposition",
+            "X-ThermoScope-Export",
+            "X-ThermoScope-Observations",
+        ],
     )
 
     def error_response(request, code, message, status=503):
@@ -330,7 +335,8 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
             },
         )
 
-    def export_window(request, suffix, bbox, start_date, end_date, data_mode, product, rules):
+    def export_window(request, suffix, bbox, start_date, end_date, data_mode, product, rules,
+                      basis):  # fmt: skip
         try:
             bounds = Bounds.parse(bbox)
             query_params(bounds, start_date, end_date, data_mode, product)
@@ -343,7 +349,7 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
             )
         try:
             records, meta = window_rows(
-                config, bounds, start_date, end_date, data_mode, product, rules
+                config, bounds, start_date, end_date, data_mode, product, rules, basis.value
             )
         except Withheld:
             return withheld(request)
@@ -377,9 +383,10 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
         data_mode: DataMode = config.app_data_mode,
         product: Product = Product.NOAA20,
         rule_outputs: bool = False,
+        basis: AssessmentBasis = AssessmentBasis.RETROSPECTIVE,
     ):
         return export_window(request, "csv", bbox, start_date, end_date, data_mode, product,
-                             rule_outputs)  # fmt: skip
+                             rule_outputs, basis)  # fmt: skip
 
     @app.get("/api/v1/exports/observations.geojson")
     def export_geojson(
@@ -390,9 +397,10 @@ def create_app(settings: Settings | None = None, probe: Callable | None = None) 
         data_mode: DataMode = config.app_data_mode,
         product: Product = Product.NOAA20,
         rule_outputs: bool = False,
+        basis: AssessmentBasis = AssessmentBasis.RETROSPECTIVE,
     ):
         return export_window(request, "geojson", bbox, start_date, end_date, data_mode, product,
-                             rule_outputs)  # fmt: skip
+                             rule_outputs, basis)  # fmt: skip
 
     @app.get("/api/v1/exports/observations/{observation_id}/evidence.geojson")
     def export_evidence(

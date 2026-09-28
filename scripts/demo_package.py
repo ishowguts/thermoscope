@@ -1,6 +1,6 @@
 """Build, verify, load and serve an offline ThermoScope demo package (P07-SUB-001).
 
-Run from the repository root through the project runtime, for example:
+Run from the repository root through the project runtime (docs/tasks/P07-DEMO-RUNBOOK.md):
 
     PYTHONPATH=backend bash scripts/run.sh uv run --frozen python scripts/demo_package.py \\
         build --name thermoscope-demo-v1 --regions jamnagar,punjab
@@ -10,11 +10,16 @@ Run from the repository root through the project runtime, for example:
     PYTHONPATH=backend bash scripts/run.sh uv run --frozen python scripts/demo_package.py \\
         serve --database thermoscope_demo --offline
 
-`--database NAME` reuses the server, user and password of DATABASE_URL in .env with another
-database name; nothing secret is printed. `--create` creates that database on a loopback server
-and applies the migrations. `--offline` makes this process refuse every network connection
-except to the local machine, so a successful run shows that nothing was fetched.
-Every command prints one JSON report.
+`build` reads the database and object store configured in .env (`--source-objects` overrides the
+store). `load` and `serve` need `--database NAME`: the server, user and password of DATABASE_URL
+in .env with another database name, never the configured one, on a loopback server only; their
+objects go to `--objects` (default local/demo-objects). Nothing secret is printed. `--create`
+creates the database and applies the migrations.
+
+`--offline` is a guard for this process, not a firewall: Python-level connections and name
+lookups to anything but the local machine are refused, HTTP clients in C libraries (curl, GDAL)
+are pointed at a dead local proxy, and the database must be on a loopback server. Physically
+disconnecting the machine remains the acceptance check. Every command prints one JSON report.
 """
 
 import argparse
@@ -29,62 +34,106 @@ from pathlib import Path
 DEFAULT_FIRMS_DIRS = ["local/history-fetch", "local/p05-fetch/raw", "local/p05-backfill/raw"]
 DEFAULT_OSM_DIR = "local/context-fetch"
 DEFAULT_OUT = "local/demo-package"
+DEFAULT_OBJECTS = "local/demo-objects"
+DEAD_PROXY = "http://127.0.0.1:9"
+LOOPBACK = {"localhost", "127.0.0.1", "::1"}
+
+
+def _loopback_host(host) -> bool:
+    if host is None or host in LOOPBACK:
+        return True
+    if isinstance(host, bytes):
+        host = host.decode(errors="replace")
+    try:
+        return ipaddress.ip_address(str(host).split("%")[0]).is_loopback
+    except ValueError:
+        return False
 
 
 def forbid_network():
-    """Allow loopback and local sockets only; anything else raises before a packet is sent."""
-    original_connect = socket.socket.connect
-    original_connect_ex = socket.socket.connect_ex
-    original_getaddrinfo = socket.getaddrinfo
+    """Refuse Python-level connections, datagrams and name lookups except to the local machine,
+    and point C-library HTTP clients at a dead local proxy. A guard, not a firewall."""
+    original = {
+        "connect": socket.socket.connect,
+        "connect_ex": socket.socket.connect_ex,
+        "sendto": socket.socket.sendto,
+        "sendmsg": socket.socket.sendmsg,
+        "getaddrinfo": socket.getaddrinfo,
+        "gethostbyname": socket.gethostbyname,
+        "gethostbyname_ex": socket.gethostbyname_ex,
+    }
 
     def local(address) -> bool:
         if isinstance(address, (str, bytes)):  # AF_UNIX path
             return True
-        host = address[0]
-        if host in {"localhost", "127.0.0.1", "::1"}:
-            return True
-        try:
-            return ipaddress.ip_address(host).is_loopback
-        except ValueError:
-            return False
+        return _loopback_host(address[0])
+
+    def refuse(what, host):
+        raise OSError(f"offline mode: refused {what} {host}")
 
     def connect(self, address):
         if not local(address):
-            raise OSError(f"offline mode: refused connection to {address[0]}")
-        return original_connect(self, address)
+            refuse("connection to", address[0])
+        return original["connect"](self, address)
 
     def connect_ex(self, address):
         if not local(address):
-            raise OSError(f"offline mode: refused connection to {address[0]}")
-        return original_connect_ex(self, address)
+            refuse("connection to", address[0])
+        return original["connect_ex"](self, address)
 
-    def getaddrinfo(host, *args, **kwargs):
-        if host not in {None, "localhost", "127.0.0.1", "::1"}:
-            try:
-                if not ipaddress.ip_address(host).is_loopback:
-                    raise OSError(f"offline mode: refused name lookup for {host}")
-            except ValueError:
-                raise OSError(f"offline mode: refused name lookup for {host}") from None
-        return original_getaddrinfo(host, *args, **kwargs)
+    def sendto(self, data, *args):
+        address = args[-1]
+        if not local(address):
+            refuse("datagram to", address[0])
+        return original["sendto"](self, data, *args)
+
+    def sendmsg(self, buffers, ancdata=(), flags=0, address=None):
+        if address is not None and not local(address):
+            refuse("datagram to", address[0])
+        if address is None:
+            return original["sendmsg"](self, buffers, ancdata, flags)
+        return original["sendmsg"](self, buffers, ancdata, flags, address)
+
+    def lookup(name):
+        def guarded(host, *args, **kwargs):
+            if not _loopback_host(host):
+                refuse("name lookup for", host)
+            return original[name](host, *args, **kwargs)
+
+        return guarded
 
     socket.socket.connect = connect
     socket.socket.connect_ex = connect_ex
-    socket.getaddrinfo = getaddrinfo
+    socket.socket.sendto = sendto
+    socket.socket.sendmsg = sendmsg
+    socket.getaddrinfo = lookup("getaddrinfo")
+    socket.gethostbyname = lookup("gethostbyname")
+    socket.gethostbyname_ex = lookup("gethostbyname_ex")
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy",
+                 "all_proxy", "GDAL_HTTP_PROXY"):  # fmt: skip
+        os.environ[name] = DEAD_PROXY
+    os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1,localhost,::1"
+
+
+def configured_database():
+    from sqlalchemy.engine import make_url
+    from thermoscope.config import Settings
+
+    base = Settings().database_url
+    if base is None:
+        raise SystemExit("DATABASE_URL is not configured in .env")
+    return make_url(base.get_secret_value())
 
 
 def use_database(name: str, create: bool) -> None:
     """Point DATABASE_URL at another database on the configured loopback server."""
-    from sqlalchemy.engine import make_url
-    from thermoscope.config import Settings
-
     if not name.replace("_", "").isalnum() or not name.startswith("thermoscope_"):
         raise SystemExit("--database must look like thermoscope_<name>")
-    base = Settings().database_url
-    if base is None:
-        raise SystemExit("DATABASE_URL is not configured in .env")
-    url = make_url(base.get_secret_value())
-    if url.host not in {"127.0.0.1", "localhost"}:
+    url = configured_database()
+    if not _loopback_host(url.host):
         raise SystemExit("demo databases are only created and used on a loopback server")
+    if name == url.database:
+        raise SystemExit("--database must not be the database configured in .env")
     target = url.set(database=name)
     if create:
         import psycopg
@@ -114,12 +163,30 @@ def main(argv=None) -> int:
     parser.add_argument("--osm-dir", default=DEFAULT_OSM_DIR)
     parser.add_argument("--out", default=DEFAULT_OUT)
     parser.add_argument("--package", help="package folder for verify/load")
-    parser.add_argument("--database", help="database name on the configured server")
+    parser.add_argument("--expect-sha256", help="content hash received separately (verify/load)")
+    parser.add_argument("--database", help="demo database name (required for load/serve)")
+    parser.add_argument("--objects", default=DEFAULT_OBJECTS, help="object folder (load/serve)")
+    parser.add_argument("--source-objects", help="object store to read from (build)")
     parser.add_argument("--create", action="store_true", help="create and migrate --database")
     parser.add_argument("--offline", action="store_true", help="refuse non-loopback network")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args(argv)
+    if args.command in {"load", "serve"}:
+        if not args.database:
+            parser.error(f"{args.command} needs --database thermoscope_<name> (a demo database)")
+        from thermoscope.config import Settings
+
+        main_store = Path(Settings().object_store_local_path).resolve()
+        if Path(args.objects).resolve() == main_store:
+            parser.error("--objects must not be the object store configured in .env")
+        os.environ["OBJECT_STORE_LOCAL_PATH"] = args.objects
+    if args.command == "serve":
+        os.environ["APP_DATA_MODE"] = "HISTORICAL_REPLAY"  # a demo package is always replay
+    if args.command == "build" and args.source_objects:
+        os.environ["OBJECT_STORE_LOCAL_PATH"] = args.source_objects
     if args.offline:
+        if args.command != "verify" and not _loopback_host(configured_database().host):
+            raise SystemExit("--offline needs the database on a loopback server")
         forbid_network()
     if args.database:
         use_database(args.database, args.create)
@@ -140,9 +207,10 @@ def main(argv=None) -> int:
                 Path(args.osm_dir),
             )
         elif args.command == "verify":
-            report = verify_package(Path(_need(parser, args.package)))
+            report = verify_package(Path(_need(parser, args.package)), args.expect_sha256)
         elif args.command == "load":
-            report = load_package(Settings(), Path(_need(parser, args.package)))
+            report = load_package(Settings(), Path(_need(parser, args.package)),
+                                  expect_sha256=args.expect_sha256)  # fmt: skip
         else:
             import uvicorn
             from thermoscope.main import create_app

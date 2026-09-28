@@ -26,7 +26,12 @@ from thermoscope.assessment import observation_assessment, observation_timeline
 from thermoscope.config import DataMode, Settings
 from thermoscope.context import observation_context, support_radius_m
 from thermoscope.database import database_engine
+from thermoscope.landcover import ATTRIBUTION as WORLDCOVER_ATTRIBUTION
+from thermoscope.landcover import DOI as WORLDCOVER_DOI
+from thermoscope.landcover import LICENSE as WORLDCOVER_LICENSE
 from thermoscope.observations import FILTER, query_params
+from thermoscope.osm import ATTRIBUTION as OSM_ATTRIBUTION
+from thermoscope.osm import LICENSE as OSM_LICENSE
 from thermoscope.regions import Bounds, Product
 
 EXPORT_VERSION = "evidence-export-v1"
@@ -56,7 +61,27 @@ UNITS = {
     "pixel_support_radius_m": "metres (approximate pixel area radius incl. location buffer)",
     "acquired_at_utc": "ISO 8601, UTC (satellite acquisition)",
     "imported_at_utc": "ISO 8601, UTC (when this application stored the file)",
+    "context_osm_as_of_utc": "ISO 8601, UTC (OpenStreetMap data date used by the rules)",
 }
+CONTEXT_SOURCES = [
+    {
+        "source": "OpenStreetMap",
+        "license": OSM_LICENSE,
+        "attribution": OSM_ATTRIBUTION,
+        "used_for": "mapped facilities in and near the pixel area (rule inputs)",
+    },
+    {
+        "source": "ESA WorldCover 2021 v200",
+        "license": WORLDCOVER_LICENSE,
+        "doi": WORLDCOVER_DOI,
+        "attribution": WORLDCOVER_ATTRIBUTION,
+        "used_for": "land cover in the pixel area (rule input)",
+    },
+]
+CONTEXT_ATTRIBUTION = (
+    f"Rule context: {OSM_ATTRIBUTION}; ESA WorldCover 2021 v200, {WORLDCOVER_LICENSE}, "
+    f"doi:{WORLDCOVER_DOI}"
+)
 
 
 def firms_attribution(product: str, collection: str | None = None) -> str:
@@ -99,7 +124,8 @@ def _number(value):
 
 
 def window_rows(settings: Settings, bounds: Bounds, start: date, end: date, mode: DataMode,
-                product: Product, include_rules: bool) -> tuple[list[dict], dict]:  # fmt: skip
+                product: Product, include_rules: bool,
+                basis: str = "RETROSPECTIVE") -> tuple[list[dict], dict]:  # fmt: skip
     """Observation records for a validated window; refuses more than the export limits."""
     if include_rules and settings.review_only:
         raise Withheld("rule outputs are withheld on the blind-review server")
@@ -146,9 +172,7 @@ def window_rows(settings: Settings, bounds: Bounds, start: date, end: date, mode
     if include_rules:
         for record in records:
             record |= rule_columns(
-                observation_assessment(
-                    settings, record["observation_id"], mode, None, "RETROSPECTIVE"
-                )
+                observation_assessment(settings, record["observation_id"], mode, None, basis)
             )
     meta = {
         "export_version": EXPORT_VERSION,
@@ -160,10 +184,13 @@ def window_rows(settings: Settings, bounds: Bounds, start: date, end: date, mode
             "data_mode": mode.value,
             "product": product.value,
             "rule_outputs": include_rules,
+            "rule_basis": basis if include_rules else None,
         },
         "observations": len(records),
         "limits": {"observations": MAX_OBSERVATIONS, "with_rule_outputs": MAX_WITH_RULES},
     }
+    if include_rules:
+        meta["context_sources"] = CONTEXT_SOURCES
     return records, meta
 
 
@@ -208,12 +235,16 @@ RULE_COLUMNS = [
     "rules_version",
     "rule_basis",
     "feature_snapshot_sha256",
+    "context_osm_as_of_utc",
+    "context_land_cover_map_year",
+    "context_attribution",
 ]
 
 
 def rule_columns(assessment: dict | None) -> dict:
     if assessment is None:
         return dict.fromkeys(RULE_COLUMNS)
+    context = assessment.get("context") or {}
     return {
         "rule_source": assessment["source"]["label"],
         "rule_source_subtype": assessment["source"].get("subtype"),
@@ -223,6 +254,13 @@ def rule_columns(assessment: dict | None) -> dict:
         "rules_version": assessment["rules_version"],
         "rule_basis": assessment["basis"],
         "feature_snapshot_sha256": assessment["feature_snapshot_sha256"],
+        "context_osm_as_of_utc": _iso(context.get("osm_base_at"))
+        if context.get("facility_context_available")
+        else None,
+        "context_land_cover_map_year": context.get("land_cover_map_year")
+        if context.get("land_cover_support") is not None
+        else None,
+        "context_attribution": CONTEXT_ATTRIBUTION,
     }
 
 
@@ -235,7 +273,7 @@ BASE_COLUMNS = [
     "source_attribution",
 ]  # fmt: skip
 STATUS_COLUMNS = ["learned_model", "human_validation"]
-FORMULA_START = ("=", "+", "-", "@", "\t", "\r", "\n")
+FORMULA_START = ("=", "+", "-", "@", "\t", "\r", "\n", "\uff1d", "\uff0b", "\uff0d", "\uff20")
 
 
 def csv_cell(value) -> str | float | int:
@@ -247,7 +285,12 @@ def csv_cell(value) -> str | float | int:
     if isinstance(value, (int, float)):
         return value
     value = str(value)
-    return "'" + value if value.startswith(FORMULA_START) else value
+    # Leading spaces do not stop some spreadsheets from evaluating a formula; full-width
+    # signs are converted by others.
+    risky = value.startswith(FORMULA_START) or value.lstrip(" \u00a0\u3000").startswith(
+        FORMULA_START
+    )
+    return "'" + value if risky else value
 
 
 def to_csv(records: list[dict], include_rules: bool) -> str:
