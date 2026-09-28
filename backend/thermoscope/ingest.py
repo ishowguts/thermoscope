@@ -5,6 +5,8 @@ import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+from sqlalchemy.exc import OperationalError
+
 from thermoscope.config import DataMode, Settings
 from thermoscope.firms import MAX_BYTES, IngestError
 from thermoscope.ingestion import ingest
@@ -42,7 +44,13 @@ def main():
         print(json.dumps(report))
         return 1 if report["status"] == "FAILED" else 0
     except Exception as error:
-        code = error.code if isinstance(error, IngestError) else "CONFIGURATION_OR_DEPENDENCY_ERROR"
+        code = (
+            error.code
+            if isinstance(error, IngestError)
+            else "DATABASE_UNAVAILABLE"
+            if isinstance(error, OperationalError)
+            else "CONFIGURATION_OR_DEPENDENCY_ERROR"
+        )
         print(json.dumps({"status": "FAILED", "error_code": code}))
         return 1
 

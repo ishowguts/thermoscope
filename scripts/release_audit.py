@@ -12,10 +12,10 @@ licences come from the lockfile. Only package names and versions are sent. This 
 snapshot, not legal clearance or a full security review; bundled native libraries inside binary
 wheels are not inspected.
 
-Prints a one-line JSON summary. Exit codes: 0 no known vulnerability and every non-permissive
-licence is in the reviewed list below; 2 a vulnerability is reported; 3 a licence needs a new
-decision; 4 a vulnerability or licence source could not be reached; 5 the installed environment
-differs from the lockfile.
+Prints a one-line JSON summary. Exit codes (distinct from Python's 1 and argparse's 2): 0 no
+known vulnerability and every non-permissive licence is in the reviewed list below; 10 a
+vulnerability is reported; 11 a licence needs a new decision; 12 a vulnerability or licence source
+could not be reached; 13 the installed environment differs from the lockfile.
 """
 
 import argparse
@@ -50,6 +50,9 @@ ACCEPTED = {
     ("PyPI", "psycopg-binary", "LGPL-3.0-only"): "driver binary used unmodified as a library",
     ("npm", "lightningcss*", "MPL-2.0"): "build-time CSS tool, not in the shipped bundle",
 }
+
+
+EXIT = {"vulnerable": 10, "undecided_licence": 11, "source_unavailable": 12, "version_drift": 13}
 
 
 class SourceUnavailable(RuntimeError):
@@ -185,7 +188,7 @@ def main(argv=None) -> int:
         vulnerabilities = osv(everything)
     except SourceUnavailable as error:
         print(json.dumps({"status": "SOURCE_UNAVAILABLE", "detail": str(error)}))
-        return 4
+        return EXIT["source_unavailable"]
     for package, ids in zip(everything, vulnerabilities, strict=True):
         package["vulnerabilities"] = ids
         package["license_class"] = classify(package["license"])
@@ -232,10 +235,10 @@ def main(argv=None) -> int:
         "report": args.out,
     }))  # fmt: skip
     if vulnerable:
-        return 2
+        return EXIT["vulnerable"]
     if undecided:
-        return 3
-    return 5 if drift else 0
+        return EXIT["undecided_licence"]
+    return EXIT["version_drift"] if drift else 0
 
 
 if __name__ == "__main__":

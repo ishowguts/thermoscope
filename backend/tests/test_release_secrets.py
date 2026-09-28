@@ -4,6 +4,7 @@ needed: every connection goes to a closed local port, with a recognisable fake d
 a well-formed fake FIRMS key and a well-formed fake reviewer token, so each request really reaches
 the authentication, database or provider step it is meant to test."""
 
+import hashlib
 import json
 import logging
 import os
@@ -109,17 +110,17 @@ def run(arguments: list[str], cwd: Path) -> str:
                           text=True, timeout=60)  # fmt: skip
     output = done.stdout + done.stderr
     assert done.returncode == 1, (arguments, output[-300:])  # a runtime failure, not a usage error
-    assert any(sign in output for sign in ("Connection refused", "DATABASE_UNAVAILABLE",
-                                           "CONFIGURATION_OR_DEPENDENCY_ERROR"))  # fmt: skip
+    assert "Connection refused" in output or "DATABASE_UNAVAILABLE" in output  # reached the DB
     return output
 
 
 def test_command_failures_never_print_secrets(tmp_path):
     saved = tmp_path / "window.csv"
     saved.write_text("latitude,longitude\n")
+    digest = hashlib.sha256(saved.read_bytes()).hexdigest()  # a matching hash: only the DB fails
     script = str(ROOT / "scripts" / "demo_package.py")
     outputs = [
-        run(["-m", "thermoscope.ingest", "import-file", "--file", str(saved), "--sha256", "0" * 64,
+        run(["-m", "thermoscope.ingest", "import-file", "--file", str(saved), "--sha256", digest,
              "--start-date", "2026-01-01"], tmp_path),
         run(["-m", "thermoscope.ml_cli", "fingerprint", "--case-set", "p05-pilot-v2"], tmp_path),
         run(["-m", "thermoscope.ml_cli", "list-reviewers"], tmp_path),

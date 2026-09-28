@@ -269,7 +269,8 @@ def cli() -> int:
 
         if not isinstance(error, (OperationalError, DriverError)):
             raise
-        hint = "Check that PostGIS is running and DATABASE_URL in .env."
+        hint = ("Check that PostGIS is running, DATABASE_URL in .env, and that the --database "
+                "exists (add --create to create it).")  # fmt: skip
         print(json.dumps({"status": "FAILED", "error": "DATABASE_UNAVAILABLE", "detail": hint}))
         return 1
 
