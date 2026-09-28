@@ -62,12 +62,15 @@ def test_public_review_recognises_the_credentials_this_project_uses():
         "TOKEN = re.compile(r'tsr_...')",
         "POSTGRES_PASSWORD=",
         "ANNOTATION_TOKEN is no longer read",
+        'const TOKEN_KEY = "thermoscope.reviewer-token";',
+        "POSTGRES_PASSWORD=\nOBJECT_STORE_LOCAL_PATH=./local/objects",
+        'DB_SECRET = "' + "Sentinel-db-pass-8Qx2" + '"',
     ]
     for text in positives:
         assert review.CREDENTIAL.search(text.encode()), text[:12]
     for text in negatives:
         assert not review.CREDENTIAL.search(text.encode()), text
-    assert review.LOCAL_PATH.search(b"/home/someone/project")
+    assert review.LOCAL_PATH.search(("/" + "home/someone/project").encode())
     assert review.category("docs/tasks/x.md") == "process record"
     assert review.category(review.REPORT) == "this release review"
 

@@ -23,18 +23,20 @@ from pathlib import Path
 
 REPORT = "docs/inventory/public-release-review.csv"
 # Placeholders and published fixtures that are not secrets.
-NOT_SECRET = rb"(?!\{|\$|<|disposable-ci-only\b|private-test-password\b|change-?me\b|p@|x@)"
+NOT_SECRET = (
+    rb"(?!\{|\$|<|disposable-ci-only\b|private-test-password\b|change-?me\b|Sentinel|p@|x@)"
+)
 CREDENTIAL = re.compile(
     rb"BEGIN [A-Z ]*PRIVATE KEY"
     rb"|tsr_[A-Za-z0-9_-]{43}"  # personal reviewer token
     rb"|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16}"
     rb"|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"  # JWT (e.g. Earthdata)
     rb"|firms\.modaps\.eosdis\.nasa\.gov/api/[a-z_]+/csv/[A-Za-z0-9]{32}"
-    rb"|MAP_KEY\s*[=:]\s*[\"']?[A-Za-z0-9]{32}"
+    rb"|MAP_KEY[ \t]*[=:][ \t]*[\"']?[A-Za-z0-9]{32}"
     rb"|postgres(?:ql)?(?:\+psycopg)?://[^:\s/@]+:" + NOT_SECRET + rb"[^@\s]+@"
-    rb"|(?:PASSWORD|SECRET|TOKEN|API_KEY)[A-Z_]*\s*[=:]\s*[\"']?"
-    + NOT_SECRET
-    + rb"[A-Za-z0-9_+/=.~-]{8,}(?=[\"'\s]|$)"
+    # NAME=value on one line; names of storage keys, prefixes, files or headers are not secrets
+    rb"|(?:PASSWORD|SECRET|TOKEN|API_KEY)(?![A-Z_]*_(?:KEY|NAME|PREFIX|FILE|PATH|HEADER)\b)"
+    rb"[A-Z_]*[ \t]*[=:][ \t]*[\"']?" + NOT_SECRET + rb"[A-Za-z0-9_+/=.~-]{8,}(?=[\"'\s]|$)"
 )
 LOCAL_PATH = re.compile(rb"/Users/[A-Za-z0-9._-]+|/home/[a-z][a-z0-9_-]*/|C:\\\\Users\\\\")
 PROCESS = ("docs/tasks/",
