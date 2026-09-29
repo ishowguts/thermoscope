@@ -1,6 +1,8 @@
 # ThermoScope demo release `v0.8.0-demo`
 
-Prepared on 28 September 2026 IST under `P08-REL-001` (internal record P08-RELEASE-CHECKS). **Status: released on 29 September 2026 as the annotated tag `v0.8.0-demo` on `78e73de` (CI green), published from the owner's Mac** (`local/p08-verify/finish_release_mac.sh`, after `verify_release_mac.sh` passed on macOS: 164 + 23 tests, offline demo load) because the cloud workspace cannot push tags. Integrated with the owner's explicit approval. It is not a public release, a GitHub release page or a deployment.
+> **History note (29 September 2026, before the repository was made public):** the Git history was rewritten so every commit is credited to the team account, co-author lines were removed, and internal process records were dropped (kept privately). File contents and dates are unchanged, but every commit ID changed. The tag `v0.8.0-demo` now points to `0227b46` (formerly `78e73de`); older IDs quoted in these documents can be looked up in `docs/inventory/commit-id-map.csv`.
+
+Prepared on 28 September 2026 IST under `P08-REL-001` (internal record P08-RELEASE-CHECKS, not published). **Status: released on 29 September 2026 as the annotated tag `v0.8.0-demo` on `78e73de` (CI green), published from the owner's Mac** (`local/p08-verify/finish_release_mac.sh`, after `verify_release_mac.sh` passed on macOS: 164 + 23 tests, offline demo load) because the cloud workspace cannot push tags. Integrated with the owner's explicit approval. It is not a public release, a GitHub release page or a deployment.
 
 ## 1. What the release is
 
@@ -15,7 +17,7 @@ It is a **research demonstration of saved real observations**: NASA FIRMS VIIRS 
 
 ## 2. How it was frozen
 
-On 29 September the branches were merged into `main` in a cloud clone (`1e22d54`), re-ran `make check` (164) and `make integration` (23), updated these records (`78e73de`), pushed and waited for CI ([36472978149](https://github.com/ishowguts/thermoscope/actions/runs/36472978149), success). The tag push from there was refused by the workspace's Git proxy (HTTP 403), so the tag is created on the Mac: in the Mac checkout, `bash local/p08-verify/verify_release_mac.sh` (isolated clone; the checkout and its database are not changed), then `bash local/p08-verify/finish_release_mac.sh`, which refuses unless the report shows every step passed, fast-forwards `main`, creates the annotated `v0.8.0-demo` on `78e73de` and pushes only that tag. `the handoff log` records the commits and CI run. The general procedure, for a later release:
+On 29 September the branches were merged into `main` in a cloud clone (`1e22d54`), re-ran `make check` (164) and `make integration` (23), updated these records (`78e73de`), pushed and waited for CI ([36472978149](https://github.com/ishowguts/thermoscope/actions/runs/36472978149), success). The tag push from there was refused by the workspace's Git proxy (HTTP 403), so the tag is created on the Mac: in the Mac checkout, `bash local/p08-verify/verify_release_mac.sh` (isolated clone; the checkout and its database are not changed), then `bash local/p08-verify/finish_release_mac.sh`, which refuses unless the report shows every step passed, fast-forwards `main`, creates the annotated `v0.8.0-demo` on `78e73de` and pushes only that tag. The internal handoff log (not published) records the commits and CI run. The general procedure, for a later release:
 
 ```bash
 git fetch origin
@@ -69,7 +71,7 @@ Evidence files are in the cloud workspace (`fresh2/` and `p08/`, outside Git); n
 - **Map tiles:** online, the basemap uses OpenStreetMap standard tiles under the OSMF tile usage policy (attribution, no bulk or heavy use). A public or high-traffic deployment needs its own tile provider; offline, the basemap is off.
 - **Before any public repository or release (owner decision, nothing published):**
   1. Choose a code licence — the repository has none, so no reuse is granted.
-  2. Go through `docs/inventory/public-release-review.csv` (regenerate with `scripts/public_release_review.py`, identity terms kept in an ignored local file): 21 committed files carry team or personal identity (team name, ID, leader name, institute or account handle — for example `PROJECT_STATE.md`, `docs/SUBMISSION_*.md`, `docs/REMAINING_WORK.md`, and the sidebar/footer in `frontend/src/Rail.tsx`, `Review.tsx`, `main.tsx`); `docs/SUBMISSION_PACKAGE.md` contains a local user path; 19 files are internal process records (the contributor guide, the work contract, the contributor notes, the contributor rules, `docs/tasks/`, `docs/review/`).
+  2. Go through `docs/inventory/public-release-review.csv` (regenerate with `scripts/public_release_review.py`, identity terms kept in an ignored local file): 21 committed files carry team or personal identity (team name, ID, leader name, institute or account handle — for example `PROJECT_STATE.md`, `docs/SUBMISSION_*.md`, `docs/REMAINING_WORK.md`, and the sidebar/footer in `frontend/src/Rail.tsx`, `Review.tsx`, `main.tsx`); `docs/SUBMISSION_PACKAGE.md` contains a local user path; the internal process records (`docs/tasks/`, `docs/review/` and the contributor instruction files) were removed from the repository and its history on 29 September 2026 before it was made public, and kept privately by the team; the demo runbook moved to `docs/DEMO_RUNBOOK.md`.
   3. Re-run that review and the secret scan on the exact allowlist; keep provider data out of Git (the ignore rules already exclude `local/`, `.env*` and rasters).
 
 ## 7. Judge-facing links (checked signed out, 28 September)

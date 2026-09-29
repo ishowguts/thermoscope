@@ -1,35 +1,104 @@
 # ThermoScope
 
-Evidence-based analysis of industrial thermal sources for SIH 2026 problem statement **SIH26162**.
+[![Project checks](https://github.com/ishowguts/thermoscope/actions/workflows/check.yml/badge.svg)](https://github.com/ishowguts/thermoscope/actions/workflows/check.yml)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 
-ThermoScope is designed to combine NASA FIRMS observations, industrial infrastructure, land cover and site history in a GIS workbench. The intended workflow separates likely source, unusual behaviour and analyst review priority, with evidence and uncertainty visible for each assessment.
+**Evidence-first GIS workbench for industrial thermal sources.** Smart India Hackathon 2026, problem statement **SIH26162** (National Technical Research Organisation), Software / Disaster Management. Team **Git_Push_Pray**, IIIT Pune.
 
-**Status:** P01–P05 engineering is integrated and independently verified on the Mac. The local research pilot contains 51,354 genuine NOAA-20 observations across 14 Indian regions, backed by source receipts and PostGIS. The map/list shows measurements, dated OSM and WorldCover context, grouped episodes and sites, historical timelines, and transparent source/behaviour/review-priority rules. Those rules have uncalibrated thresholds; the app does not serve a learned classifier or confirm industrial accidents.
+NASA FIRMS flags satellite heat detections every day, but each one is only a hot pixel roughly 375 m across. It could be a refinery flare, crop-residue burning, a forest fire or sunlight glinting off a roof. ThermoScope puts every detection next to the evidence an analyst needs and answers three separate questions, each with its reasons and its missing data:
 
-P05 provides 10,318 frozen cases with facility-aware splits, a blind review workflow with personal sign-in, and a working XGBoost/baseline/evaluation pipeline. Human validation is deferred: there are no human reviews, no independently evaluated model and no reportable accuracy. A weak-rule run checks execution only. macOS XGBoost needs `brew install libomp`. See [current state](PROJECT_STATE.md), independent acceptance and [remaining work](docs/REMAINING_WORK.md). P06 is deferred. The bounded P07 demo (offline replay package, evidence exports, map-free mode) and the local P08 release checks are integrated in `main` as release `v0.8.0-demo` (commit `78e73de`; the tag is published from the owner's Mac); see the demo runbook and [release notes](docs/RELEASE.md). Cloud deployment remains unbuilt. The earlier college demonstration is a separate project.
+1. **Likely source:** industrial, non-industrial or unknown?
+2. **Behaviour:** is this new, recurring or persistent at this place?
+3. **Review priority:** how soon should an analyst look?
 
-## Read first
+When the evidence is thin, it says *unknown* instead of guessing.
+
+## Status (release `v0.8.0-demo`)
+
+- **Built and tested:** ingestion of real NASA FIRMS VIIRS (NOAA-20) detections with a SHA-256 receipt for every file; PostGIS context (approximate pixel area, mapped OpenStreetMap facilities, ESA WorldCover land cover); 7- to 180-day history with the days actually covered; transparent rules (`rules-v2`) with reason codes; a React + MapLibre workbench; CSV/GeoJSON evidence exports; a hashed offline demo package for two regions (Jamnagar and a Punjab comparison region).
+- **Machine-learning lane:** built and tested (scikit-learn, XGBoost, 10,318 frozen cases with facility-grouped splits, blind review workflow), but **no model is served** and no accuracy is claimed until human-reviewed labels exist.
+- **Not claimed:** live or real-time monitoring, alerts, confirmed incidents, calibrated probabilities or a hosted service. The demo is historical replay of saved real data.
+
+## How it works
+
+| Step | What happens | Tech | Output |
+| --- | --- | --- | --- |
+| 1. Fetch | VIIRS detections from the NASA FIRMS area API, in five-day windows per region | FIRMS API | CSV file |
+| 2. Receipt | Each file is fingerprinted before import | SHA-256 | receipt (hash, time, status) |
+| 3. Ingest | Every observation keeps its file hash and row; re-imports add no duplicates | PostgreSQL + PostGIS, SQLAlchemy | observations table |
+| 4. Context | Approximate pixel area, nearby OSM facilities, land-cover mix | PostGIS, rasterio | context JSON |
+| 5. History | Earlier activity within 750 m over 7, 30, 90 and 180 days, with coverage | PostGIS | time windows |
+| 6. Assess | Source, behaviour and priority, each with a rule code and reasons | Python rules engine | assessment JSON |
+| 7. Serve and export | REST API and GIS workbench; one case as GeoJSON, a window as CSV | FastAPI, React, MapLibre GL | workbench, CSV, GeoJSON |
+
+A mapped facility near a detection is shown as context, never as a confirmed source.
+
+## Tech stack
+
+| Layer | Tools |
+| --- | --- |
+| Data | NASA FIRMS (VIIRS NOAA-20, NRT and SP), OpenStreetMap (Overpass), ESA WorldCover 2021, WRI Global Power Plant Database (review lane) |
+| Storage and GIS | PostgreSQL 18 + PostGIS 3.6 (Docker), Alembic, SQLAlchemy 2, psycopg 3, rasterio, NumPy |
+| Logic and API | Python 3.13 (uv-locked), FastAPI, Pydantic 2, Uvicorn |
+| Interface | React 19, TypeScript, Vite, MapLibre GL |
+| Machine learning | scikit-learn, XGBoost (built, not served) |
+| Quality | pytest (164 unit/API + 23 PostGIS tests), Ruff, Prettier, GitHub Actions |
+
+## Quick start
+
+Needs Python 3.13, Node 24, uv and Docker with Compose. From the repository root:
+
+```sh
+make install      # locked Python and npm dependencies
+make configure    # local .env with a random database password
+make db-up        # PostGIS in Docker, bound to 127.0.0.1
+make migrate
+make check        # lint, format, 164 tests, TypeScript and production build
+make dev-api      # terminal 1: API on 127.0.0.1:8000
+make dev-web      # terminal 2: workbench on http://127.0.0.1:5173
+```
+
+Real observations are fetched with your own NASA FIRMS key (kept in `.env`, never committed): see [Local development](docs/DEVELOPMENT.md). To run the offline demo from a hashed package, see the [demo runbook](docs/DEMO_RUNBOOK.md).
+
+## Repository layout
+
+| Path | Contents |
+| --- | --- |
+| `backend/thermoscope/` | FastAPI app, FIRMS ingestion, context, history, rules, exports, offline replay, ML lane |
+| `backend/tests/` | Unit, API and PostGIS integration tests |
+| `backend/migrations/` | Alembic database migrations |
+| `frontend/` | React + MapLibre workbench |
+| `scripts/` | Local configuration, demo package, release audit |
+| `docs/` | Architecture, data sources, development, release notes, evidence |
+
+## Documentation
 
 | Document | Purpose |
-|---|---|
-| [Decision brief](docs/00-BRIEFING.md) | Plain-language recommendation, scope, roles, time and submission priorities |
-| [Architecture](docs/ARCHITECTURE.md) | Data contracts, classification, GIS, evaluation and operating design |
-| [Eight milestones](docs/BUILD_PLAN.md) | Build sequence and acceptance gates |
-| [Local development](docs/DEVELOPMENT.md) | Reproducible setup, checks, endpoints and database lifecycle |
-| Demo runbook | Offline replay package, exports, exact demo commands and click path |
-| [Release notes](docs/RELEASE.md) | Release candidate checks, data/model status cards, licences and claims |
-| [Team update](docs/TEAM_UPDATE.md) | What changed, what is built before submission and how the model will be trained |
-| [Access setup](docs/ACCESS_SETUP.md) | FIRMS, Earthdata and other prerequisites |
-| [Submission guide](docs/SUBMISSION_GUIDE.md) | Six-slide revision and demo-video outline |
-| [Audit](docs/AUDIT.md) | What the earlier code and presentation actually contain |
-| [Research](docs/RESEARCH.md) | Primary sources and technology decisions |
+| --- | --- |
+| [Architecture](docs/ARCHITECTURE.md) | Data contracts, classification, GIS and evaluation design |
+| [Local development](docs/DEVELOPMENT.md) | Setup, checks, endpoints and database lifecycle |
+| [Demo runbook](docs/DEMO_RUNBOOK.md) | Offline replay package, exports and demo commands |
+| [Release notes](docs/RELEASE.md) | Release checks, data and model status, licences and claims |
+| [Data sources](docs/DATA_SOURCES.md) | Every data source with its terms |
+| [Evidence](docs/EVIDENCE.md) | Test runs, checks and measured results |
+| [Decisions](DECISIONS.md) | Architecture decision records |
 
-For implementation sessions, read the contributor guide, the work contract and [current state](PROJECT_STATE.md). Verified P01/P02 versions and remaining candidates are recorded in [ENVIRONMENT.md](ENVIRONMENT.md). See [evidence](docs/EVIDENCE.md) for the checks actually performed.
+## Data and licences
 
-## What success means
+The code is released under the [MIT licence](LICENSE). Data keeps its own terms and is not stored in this repository:
 
-A repeatable workflow that ingests genuine observations, distinguishes industrial and non-industrial candidates, compares activity with its past baseline, and lets an analyst inspect and export the supporting evidence. Any accuracy claim must identify the reviewed dataset, held-out sites, model version and reproducible evaluation.
+- NASA FIRMS: we acknowledge the use of data from NASA's Fire Information for Resource Management System (FIRMS), part of NASA's Earth Science Data and Information System (ESDIS).
+- © OpenStreetMap contributors, available under the Open Database Licence (ODbL).
+- © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium (CC BY 4.0).
+- Global Power Plant Database v1.3.0, World Resources Institute and partners (CC BY 4.0).
 
-Satellite observation gaps, incomplete facility maps and scarce incident labels are part of the design. A thermal anomaly is not automatically an industrial accident.
+## Team Git_Push_Pray
 
-Data and model terms are tracked separately in [DATA_SOURCES.md](docs/DATA_SOURCES.md). No data redistribution or application-code license is implied by this planning package.
+- **Bittu Mandal** (team leader), [@ishowguts](https://github.com/ishowguts)
+- [@Vedant102dev](https://github.com/Vedant102dev)
+- [@chinmayy777](https://github.com/chinmayy777)
+- [@paridhi-shethia](https://github.com/paridhi-shethia)
+- [@sa-mael451](https://github.com/sa-mael451)
+- [@rreeeeem](https://github.com/rreeeeem)
+
+Indian Institute of Information Technology, Pune · SIH 2026 · Team ID 144613

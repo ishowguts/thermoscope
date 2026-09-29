@@ -10,7 +10,7 @@ The submission track starts immediately: revise the six-slide story and abstract
 
 **Gate:** clean install on selected architecture; API health/readiness; migration and geographic-distance check; UI typecheck/build; sanitized secret handling; coverage inventory with explicit unavailable sources. Small synthetic fixtures are labeled and contain no invented real incident claims. No classifier badge yet.
 
-**Owner:** lead integrator. Task: internal record P01-FOUNDATION.
+**Owner:** lead integrator. Task: internal record P01-FOUNDATION (not published).
 
 ## P02 — Genuine FIRMS ingestion through to the map
 
@@ -38,7 +38,7 @@ The submission track starts immediately: revise the six-slide story and abstract
 
 ## P06 — Modern satellite context experiment
 
-**Submission scope, 28 September (ADR-024):** human validation is deferred at the owner's request. Do not start P06's comparison without independent labels. The independent demo portions of P07 and release checks of P08 may proceed under internal record P07-SUBMISSION-DEMO; this does not complete the full P05 scientific gate or P07/P08 production scope. Submit an accurate earlier release if those demo improvements would delay the entry.
+**Submission scope, 28 September (ADR-024):** human validation is deferred at the owner's request. Do not start P06's comparison without independent labels. The independent demo portions of P07 and release checks of P08 may proceed under internal record P07-SUBMISSION-DEMO (not published); this does not complete the full P05 scientific gate or P07/P08 production scope. Submit an accurate earlier release if those demo improvements would delay the entry.
 
 **Build:** eligible AlphaEarth COG extraction and matched ablation. Only after this comparison, optionally add frozen Prithvi tiny embeddings on correctly prepared HLS. Freeze model revisions and optional environment. Keep the no-imagery path usable.
 

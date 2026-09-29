@@ -6,7 +6,7 @@ Checkpoint: 29 September 2026 01:45 IST (release `v0.8.0-demo` and submission pa
 
 - P01–P04 are technically integrated on private GitHub main and verified on the Mac: genuine FIRMS ingestion, PostGIS, API/map, OSM/WorldCover context, events/sites, history and transparent rules with UNKNOWN outcomes. Main now has 51,354 genuine observations across 14 pilot regions after P05 acceptance. Rules are computed from data; they are uncalibrated heuristics, not learned probabilities or confirmed source truth.
 - The final P05 implementation independently passed 148 unit/API plus 19 PostGIS tests on the Mac, along with lint, formatting, TypeScript and production build. Real provider reads and the built browser flow were checked. Five evidence defects were corrected. Human domain review is deferred at the owner's request.
-- P05 is integrated in `main` (28 September, at the owner's request): 14-region NOAA-20 archive from 30 December 2025, frozen facility-aware case set (10,318 cases; 10,035 history-eligible), evidence policy, blind review page with personal reviewer accounts, and an XGBoost/baseline/calibration pipeline. Separate review passes and isolated-clone checks are followed by an independent acceptance, canonical Mac migration/data integration and verified real-data runs (see internal record P05-MAC-ACCEPTANCE). Zero human labels, so no reportable learned-model performance; learned predictions are not served in the app.
+- P05 is integrated in `main` (28 September, at the owner's request): 14-region NOAA-20 archive from 30 December 2025, frozen facility-aware case set (10,318 cases; 10,035 history-eligible), evidence policy, blind review page with personal reviewer accounts, and an XGBoost/baseline/calibration pipeline. Separate review passes and isolated-clone checks are followed by an independent acceptance, canonical Mac migration/data integration and verified real-data runs (see internal record P05-MAC-ACCEPTANCE, not published). Zero human labels, so no reportable learned-model performance; learned predictions are not served in the app.
 - Release `v0.8.0-demo` (29 September, with the owner's approval): the bounded P07 demo (hashed two-region offline replay package, bounded CSV/GeoJSON evidence exports, map-free mode) and the local P08 checks (fresh clone, dependency/licence audit, secret safety, backup/restore, links) integrated in `main` at `78e73de`, CI green; 164 unit/API + 23 PostGIS tests. The tag is published from the Mac by the owner's script. See `RELEASE.md`.
 - FIRMS access is working and stored privately. The team leader reports a working Earthdata login. Registered identity is Git_Push_Pray / Bittu Mandal / 144613 / INDIAN INSTITUTE OF INFORMATION TECHNOLOGY, PUNE. On 27 September around 22:19 IST, signed-in team details, submission access and form limits were verified. No separate nomination badge appeared; draft and submitted-idea lists were empty. See `SUBMISSION_DETAILS.md`.
 
@@ -29,7 +29,7 @@ Do **not** wait for P06–P08 or hundreds of reviews before preparing/submitting
 
 ## B. P05 technical reconciliation — done and accepted
 
-Full contract and paste prompt: P05-RECONCILE.md.
+Full contract and paste prompt: P05-RECONCILE.md (internal, not published).
 
 Implemented and reviewed on 27–28 September, then independently accepted on 28 September. The earlier review and the acceptance checks are recorded separately.
 
@@ -49,14 +49,14 @@ Implemented and reviewed on 27–28 September, then independently accepted on 28
 - [x] Verified 464 original and 252 backfill FIRMS files by inventory/hash; reproduced frozen cases, facility grouping, land cover and v4 features. All episode/split/feature fingerprints match the recorded results.
 - [x] Added verified data to main with constraints enabled and no replacement of old rows: 51,354 observations. Every original row across 24 application tables remains unchanged.
 - [x] Exercised real main training: `INSUFFICIENT_LABELS` and `DRY_RUN_NOT_EVIDENCE`; artifact hashes pass. No accuracy claims. Zero real reviews/accounts.
-- [x] Browser/API checks: v2 and superseded v1, sign-in protections, genuine newly integrated observations/context/history and clear rule-only messaging. Full acceptance: P05-MAC-ACCEPTANCE.md.
+- [x] Browser/API checks: v2 and superseded v1, sign-in protections, genuine newly integrated observations/context/history and clear rule-only messaging. Full acceptance: P05-MAC-ACCEPTANCE.md (internal, not published).
 
 ## D. Human evidence and genuine model evaluation — deferred
 
 **Owner decision, 28 September (ADR-024): no reviewer recruitment or manual labels are required before submission.** These are later scientific acceptance tasks. Engineering acceptance does not satisfy them, and AI guesses cannot replace independent labels. Real reviewer accounts and private HTTPS are unnecessary until actual people will review.
 
 - [ ] Arrange two independent reviewers for test cases and a third person to resolve disagreements; obtain faculty/domain help for ambiguous industrial/cropland cases. Software can gather evidence and check itself, but cannot certify independent human truth.
-- [ ] Complete the prepared P03 domain-review gate. Its three-case evidence sheet contains rule outcomes: do not use it as blind test-review material for overlapping P05 cases.
+- [ ] Complete the prepared P03 domain-review gate. Its three-case evidence sheet (internal, not published) contains rule outcomes: do not use it as blind test-review material for overlapping P05 cases.
 - [ ] Pilot the review instructions on practice cases outside the held-out test set. Measure actual review time and agreement before promising a total effort.
 - [ ] Review with dated independent evidence, source identity, uncertainty and licence/provenance. OSM or plant-registry agreement alone cannot prove a model using those inputs is correct. “Cannot decide” is a valid outcome.
 - [ ] Collect adequate eligible training, validation and test labels under the frozen protocol. Keep gold, silver and weak labels distinct; silver training labels are not independent test truth.
@@ -80,7 +80,7 @@ These are later experiments, not prerequisites for an honest idea submission. Ea
 
 ## F. P07 — complete the analyst product
 
-**Recommended next:** the bounded submission demo task: genuine replay, bounded exports, clear evidence/uncertainty and browser fallback/accessibility checks. It keeps one writer per checkout. The full product list below remains broader than that task.
+**Recommended next:** the bounded submission demo task (internal, not published): genuine replay, bounded exports, clear evidence/uncertainty and browser fallback/accessibility checks. It keeps one writer per checkout. The full product list below remains broader than that task.
 
 - [ ] Serve only an appropriately accepted model with version/provenance and explicit fallback/abstention; distinguish source classification, unusual behaviour and review priority.
 - [ ] Add analyst authentication/roles, append-only review and an alert lifecycle. Operational decisions must not silently become gold training labels.

@@ -1,6 +1,6 @@
 """Build, verify, load and serve an offline ThermoScope demo package (P07-SUB-001).
 
-Run from the repository root through the project runtime (docs/tasks/P07-DEMO-RUNBOOK.md):
+Run from the repository root through the project runtime (docs/DEMO_RUNBOOK.md):
 
     PYTHONPATH=backend bash scripts/run.sh uv run --frozen python scripts/demo_package.py \\
         build --name thermoscope-demo-v1 --regions jamnagar,punjab

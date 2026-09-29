@@ -1,6 +1,6 @@
 # Project state
 
-Checkpoint: 29 September 2026 IST. **Release `v0.8.0-demo`: P01–P05 engineering (accepted on the Mac) plus the bounded P07 demo and local P08 release checks, integrated in `main` (`1e22d54`; release commit `78e73de`, CI green) with the owner's approval. Submission package v6 and a captioned demo video are on the Mac for team review. Human source/model validation is deferred at the owner's request (ADR-024).** Canonical workspace: `thermoscope`; private remote: https://github.com/ishowguts/thermoscope; branch `main`. Read the internal handoff log first.
+Checkpoint: 29 September 2026 IST. **Release `v0.8.0-demo`: P01–P05 engineering (accepted on the Mac) plus the bounded P07 demo and local P08 release checks, integrated in `main` (`1e22d54`; release commit `78e73de`, CI green) with the owner's approval. Submission package v6 and a captioned demo video are on the Mac for team review. Human source/model validation is deferred at the owner's request (ADR-024).** Canonical workspace: `thermoscope`; private remote: https://github.com/ishowguts/thermoscope; branch `main`.
 
 ## Milestone status
 
@@ -27,7 +27,7 @@ Checkpoint: 29 September 2026 IST. **Release `v0.8.0-demo`: P01–P05 engineerin
 - Browser/API checked on main: health/schema ready; protected review routes return 401 without credentials; v2 and superseded v1 shown; no-account review status; real Jharia measurements, context, WorldCover, historical timeline and rule explanations load. No browser warning/error entries in this check.
 - Mumbai OSM remains PARTIAL (1,700 accepted features, two unclosed ways quarantined). Context is retrospective; WorldCover describes 2021. Inference remains a research preview, not confirmed industrial-incident detection.
 
-Detailed acceptance and local report paths: internal record P05-MAC-ACCEPTANCE, `docs/EVIDENCE.md`. P03/P04 review fixes and original author histories remain preserved (ADR-020). This checkpoint changed documentation and local data, not application code.
+Detailed acceptance and local report paths: internal record P05-MAC-ACCEPTANCE (not published), `docs/EVIDENCE.md`. P03/P04 review fixes and original author histories remain preserved (ADR-020). This checkpoint changed documentation and local data, not application code.
 
 ## Exact next work
 
