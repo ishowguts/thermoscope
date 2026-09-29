@@ -8,7 +8,7 @@ You only need to handle account ownership, credentials, final submission and spe
 2. Choose **Get MAP_KEY**, enter an email you control and submit the request yourself. NASA says the key is free and sent by email. Check spam if necessary.
 3. If the email is already registered, use the page's official `/download` login link to manage/resend the existing key. An Earthdata password is not a FIRMS MAP_KEY.
 4. In this fresh `thermoscope` folder, copy `.env.example` to `.env`. Open `.env` locally in your editor and place the key after `FIRMS_MAP_KEY=`. Do not paste it into a shell command, screenshot, task document or frontend setting.
-5. Tell the developer only: **“FIRMS key is saved in the local.env.”**
+5. Tell the developer only: **“FIRMS key is saved in the local .env.”**
 
 Safe preparation command, run from the fresh repository root (it does not overwrite an existing file):
 
@@ -36,8 +36,6 @@ FIRMS API access and Earthdata login are separate prerequisites. Start the FIRMS
 | GitHub `ishowguts` | Connected; new private repository [thermoscope](https://github.com/ishowguts/thermoscope) created. Old sources preserved. |
 | SIH team-leader login | You confirmed it is available. Sign in yourself when we verify portal fields. Keep credentials out of project files. |
 | Team ID and registered name | Supply non-secret registration details for the cover. Verify nomination/PS choice inside the portal. |
-| A frontend contributor | Available according to you. Open this repository and use the shared work contract for assigned tasks. |
-| The implementer | Optional. No subscription/API purchase is required to start. |
 | Cloud | Choose the provider and billing owner before paid deployment; no machine or billable service has been started. |
 | Label review | Arrange a faculty/domain reviewer for difficult examples and another reviewer for adjudicating the test set. We prepare the evidence forms. |
 
