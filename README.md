@@ -95,7 +95,7 @@ The code is released under the [MIT licence](LICENSE). Data keeps its own terms 
 ## Team Git_Push_Pray
 
 - **Bittu Mandal** (team leader: product direction, system architecture, integration and release), [@ishowguts](https://github.com/ishowguts)
-- **Dev Krishan** (initial prototype (Part 1) and frontend), [@sa-mael451](https://github.com/sa-mael451)
+- **Dev Krishan** (initial Part 1 prototype and frontend), [@sa-mael451](https://github.com/sa-mael451)
 - **Chinmay Ghule** (research: NASA FIRMS data and problem analysis), [@chinmayy777](https://github.com/chinmayy777)
 - **Paridhi Shethia** (demo video and documentation), [@paridhi-shethia](https://github.com/paridhi-shethia)
 - **Vedant Valsange** (testing and QA), [@Vedant102dev](https://github.com/Vedant102dev)
